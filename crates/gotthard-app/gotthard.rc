@@ -1,0 +1,34 @@
+// Windows resources of gotthard.exe. eframe sets the window icon at runtime,
+// but Explorer, shortcuts and the taskbar take the icon from the exe. The
+// version strings show in the exe's properties and Task Manager. build.rs
+// passes the GOTTHARD_VERSION macros. No #include, so every resource compiler
+// takes it as is.
+#pragma code_page(65001)
+
+1 ICON "../../assets/icon/gotthard.ico"
+
+1 VERSIONINFO
+FILEVERSION GOTTHARD_VERSION_MAJOR, GOTTHARD_VERSION_MINOR, GOTTHARD_VERSION_PATCH, 0
+PRODUCTVERSION GOTTHARD_VERSION_MAJOR, GOTTHARD_VERSION_MINOR, GOTTHARD_VERSION_PATCH, 0
+FILEOS 0x40004 // VOS_NT_WINDOWS32
+FILETYPE 0x1 // VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0" // U.S. English, Unicode
+        BEGIN
+            VALUE "CompanyName", "Remo Laubacher"
+            VALUE "FileDescription", "Gotthard"
+            VALUE "FileVersion", GOTTHARD_VERSION
+            VALUE "InternalName", "gotthard"
+            VALUE "LegalCopyright", "Copyright © 2026 Remo Laubacher"
+            VALUE "OriginalFilename", "gotthard.exe"
+            VALUE "ProductName", "Gotthard"
+            VALUE "ProductVersion", GOTTHARD_VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

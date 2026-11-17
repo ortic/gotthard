@@ -1,0 +1,24 @@
+[package]
+name = "gotthard-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Gotthard's file operations: scan, sync, merge, duplicates, rename, safety copies"
+
+[dependencies]
+anyhow.workspace = true
+blake3.workspace = true
+chrono.workspace = true
+fs4.workspace = true
+globset.workspace = true
+rayon.workspace = true
+regex.workspace = true
+same-file.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+strsim.workspace = true
+thiserror.workspace = true
+trash.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

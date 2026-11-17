@@ -1,0 +1,72 @@
+[package]
+name = "gotthard-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "File sync and management around a master copy, without a cloud"
+authors = ["Remo Laubacher"]
+
+[[bin]]
+name = "gotthard"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+eframe.workspace = true
+egui.workspace = true
+egui_extras = { workspace = true, features = ["image"] }
+# The logo in the navigation (egui_extras decodes it).
+image = { version = "0.25", default-features = false, features = ["png"] }
+gotthard-config.workspace = true
+gotthard-core.workspace = true
+rfd = "0.17"
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Under WSLg the window opens through X11 (main.rs); eframe's winit.
+[target.'cfg(target_os = "linux")'.dependencies]
+winit = { version = "0.30", default-features = false, features = ["x11"] }
+
+[build-dependencies]
+# The icon and version resource of gotthard.exe (build.rs).
+embed-resource = "3"
+
+[dev-dependencies]
+egui_kittest = { version = "0.36", features = ["eframe", "wgpu", "snapshot"] }
+tempfile.workspace = true
+
+# Installers: `cargo packager --release -p gotthard-app` (see README).
+[package.metadata.packager]
+productName = "Gotthard"
+identifier = "com.ortic.gotthard"
+publisher = "Remo Laubacher"
+copyright = "Copyright © 2026 Remo Laubacher"
+category = "Utility"
+description = "File sync and management around a master copy, without a cloud"
+longDescription = """
+Gotthard keeps the folders of your computers in step with a master copy on an
+external disk, backs folders up, merges folder trees, finds duplicates and
+similar names and renames files in bulk. Everything it replaces or removes
+stays restorable. No cloud, no account."""
+licenseFile = "../../LICENSE-MIT"
+# `cargo build --release -p gotthard-app`, as an alias in .cargo/config.toml.
+beforePackagingCommand = "cargo package-build"
+outDir = "../../target/packages"
+binariesDir = "../../target/release"
+icons = ["../../assets/icon/gotthard-32.png", "../../assets/icon/gotthard-128.png", "../../assets/icon/gotthard-256.png", "../../assets/icon/gotthard-512.png", "../../assets/icon/gotthard.ico"]
+resources = ["../../README.md", "../../LICENSE-MIT", "../../LICENSE-APACHE"]
+
+[[package.metadata.packager.binaries]]
+path = "gotthard"
+main = true
+
+[package.metadata.packager.nsis]
+installerIcon = "../../assets/icon/gotthard.ico"
+installMode = "perMachine"
+
+[package.metadata.packager.wix]
+languages = ["en-US"]

@@ -1,0 +1,60 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+
+[workspace.dependencies]
+gotthard-core = { path = "crates/gotthard-core" }
+gotthard-config = { path = "crates/gotthard-config" }
+
+eframe = { version = "0.36", default-features = false, features = ["wgpu", "glow", "default_fonts", "accesskit", "wayland", "x11"] }
+egui = "0.36"
+egui_extras = "0.36"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+directories = "6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+thiserror = "2"
+regex = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Content hashes: duplicates, verified copies, the integrity manifest.
+blake3 = "1"
+rayon = "1"
+# Exclude patterns.
+globset = "0.4"
+# Free space of a volume.
+fs4 = { version = "1", default-features = false, features = ["sync"] }
+# Hard links to one file aren't duplicates of each other.
+same-file = "1"
+# Similar names.
+strsim = "0.11"
+# The Recycle Bin.
+trash = "5"
+tempfile = "3"
+
+# Keep dev builds small and fast: full debug info only for our own crates.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+# Optimized builds to run locally (`cargo run --profile fast -p gotthard-app`).
+[profile.fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
