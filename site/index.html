@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gotthard — File Sync and File Management Around a Master Copy, Without a Cloud</title>
+<meta name="description" content="Gotthard is a free, open-source Windows app that keeps the folders of your computers in step with a master copy on an external disk, backs folders up, merges folder trees, finds duplicates and renames files in bulk. No cloud, no account.">
+<link rel="canonical" href="{{ base_url }}">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#2463b8">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Gotthard — file sync around a master copy, without a cloud">
+<meta property="og:description" content="Free and open source, for Windows 11. Your files stay on your disks.">
+<meta property="og:url" content="{{ base_url }}">
+<meta property="og:image" content="{{ base_url }}screenshots/synchronize.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="icons/gotthard-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/gotthard-256.png">
+<link rel="stylesheet" href="style.css">
+<script src="site.js" defer></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Gotthard",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Windows 10, Windows 11",
+  "softwareVersion": "{{ version }}",
+  "datePublished": "{{ date_iso }}",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "license": "https://opensource.org/licenses/MIT",
+  "url": "{{ base_url }}",
+  "downloadUrl": "{{ main_windows }}"
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <a class="brand" href="#" aria-label="Gotthard home">
+      <img src="icons/gotthard-128.png" alt="" width="28" height="28">
+      <span>Gotthard</span>
+    </a>
+    <nav aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/ortic/gotthard">GitHub</a>
+      <a class="btn btn-primary btn-small" href="#download">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero">
+  <div class="wrap hero-text">
+    <p class="eyebrow">Free &amp; open source · File sync and management for Windows</p>
+    <h1>One master copy. <span class="accent">No cloud.</span></h1>
+    <p class="lead">Gotthard keeps the folders of your desktop and your laptop in step with a master copy on an external disk — and backs up, merges, de-duplicates and renames your files in the same place. Everything it replaces or removes can be restored.</p>
+    <div class="actions">
+      <a class="btn btn-primary btn-large" id="hero-download" href="#download"
+         data-windows="{{ main_windows }}" data-windows-size="{{ size_windows }}">Download Gotthard</a>
+      <a class="btn btn-secondary btn-large" href="#download">All downloads</a>
+    </div>
+    <p class="hero-note" id="hero-note" data-version="{{ version }}">Version {{ version }} · {{ date }} · Windows 10 and 11 · no sign-up</p>
+    <ul class="chips" aria-label="At a glance">
+      <li><a href="https://github.com/ortic/gotthard">Open source on GitHub</a></li>
+      <li>No cloud, no account</li>
+      <li>Plain files you can open with Explorer</li>
+      <li>No telemetry</li>
+    </ul>
+  </div>
+  <div class="wrap">
+    <figure class="hero-shot">
+      <img src="screenshots/synchronize.png" width="1920" height="1200"
+           alt="Gotthard comparing a folder of the master copy with a folder of this computer: a list of files with what would be copied in which direction and what would be deleted">
+    </figure>
+  </div>
+</section>
+
+<section id="features" class="section">
+  <div class="wrap">
+    <h2>Everything your files need, in one place</h2>
+    <p class="section-lead">A sync tool, a backup tool, a file manager, a duplicate finder and a bulk renamer usually are five programs. Here they share one window and one set of safety rules.</p>
+    <div class="grid cards">
+      <article class="card">
+        <h3>Synchronize with a master copy</h3>
+        <p>A folder on your external disk is the master; each computer has its own folder that belongs to it. Both ways, master → computer, or computer → master. The disk carries the changes from one computer to the other.</p>
+      </article>
+      <article class="card">
+        <h3>Compare first, then run</h3>
+        <p>Every run starts with a list of what would be copied and deleted, file by file. Nothing changes before you start it. Files changed on both sides are yours to decide — or the master wins, or the newer file.</p>
+      </article>
+      <article class="card">
+        <h3>A master it recognizes</h3>
+        <p>The master is known by a marker inside it, not by its drive letter. Plugged in as <code>F:</code> instead of <code>E:</code>, it's found again; another disk at the old letter is refused.</p>
+      </article>
+      <article class="card">
+        <h3>Backup in plain files</h3>
+        <p>An exact copy of a folder on another disk, which you can open with Explorer. <em>Check for damage</em> finds files whose content changed although their size and time didn't — what a failing disk does silently.</p>
+      </article>
+      <article class="card">
+        <h3>Two folders side by side</h3>
+        <p>Copy, move, rename and delete between two panes, with breadcrumbs, sorting and the keys you know (F2, F5, F6, Delete). Send a folder straight to the duplicate finder or a selection to the renamer.</p>
+      </article>
+      <article class="card">
+        <h3>Merge folder trees</h3>
+        <p>Bring several folder trees together in one. Files with the same content are taken once; for different files with the same path you choose: keep both, the newer, the target's, or replace.</p>
+      </article>
+      <article class="card">
+        <h3>Find duplicates</h3>
+        <p>Files with exactly the same content, whatever they're called. Mark all but the oldest, the newest or the one on the master in a click. The last copy of a file always stays.</p>
+      </article>
+      <article class="card">
+        <h3>Find similar names</h3>
+        <p><code>Report.docx</code>, <code>Report (1).docx</code>, <code>report_final_v2.docx</code>: copies and versions that aren't identical are grouped by name. Numbered series like <code>IMG_0012</code>, <code>IMG_0013</code> aren't mistaken for versions.</p>
+      </article>
+      <article class="card">
+        <h3>Rename in bulk</h3>
+        <p>Replace text (also regular expressions), insert, remove, change case, number, add the file's date. Every new name is shown first, with what stands in its way — and the last rename can be undone.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section-tight" aria-label="Screenshots">
+  <div class="wrap grid shots">
+    <figure>
+      <a href="screenshots/browse.png"><img src="screenshots/browse.png" width="1920" height="1200" loading="lazy"
+         alt="The file browser: two folders side by side with folder and file icons, breadcrumbs and a toolbar"></a>
+      <figcaption><strong>Browse.</strong> Two folders side by side; copies and moves go to the other side.</figcaption>
+    </figure>
+    <figure>
+      <a href="screenshots/duplicates.png"><img src="screenshots/duplicates.png" width="1920" height="1200" loading="lazy"
+         alt="The duplicate finder with a group of three identical files, two of them marked for removal"></a>
+      <figcaption><strong>Duplicates.</strong> One copy of every file stays, whatever you mark.</figcaption>
+    </figure>
+    <figure>
+      <a href="screenshots/rename.png"><img src="screenshots/rename.png" width="1920" height="1200" loading="lazy"
+         alt="The renamer with two steps and a list of the files' old and new names"></a>
+      <figcaption><strong>Rename.</strong> Steps from top to bottom, every new name before it's given.</figcaption>
+    </figure>
+    <figure>
+      <a href="screenshots/merge.png"><img src="screenshots/merge.png" width="1920" height="1200" loading="lazy"
+         alt="Merging two folders into one: a list of where every file goes"></a>
+      <figcaption><strong>Merge.</strong> Where every file would go, before anything moves.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section section-soft">
+  <div class="wrap narrow">
+    <h2>Safe by construction</h2>
+    <p class="section-lead">A sync tool that loses a file once is never trusted again. These rules hold for every operation.</p>
+    <ul class="checks">
+      <li><strong>Nothing is lost on purpose.</strong> What a synchronization, backup, merge or deletion replaces or removes goes to the folder's safety copies, and the app puts it back with a click.</li>
+      <li><strong>Copies are verified.</strong> A copy is written beside its target, read back and compared with the original, and only then takes its place. An interrupted copy leaves the target as it was.</li>
+      <li><strong>A missing disk isn't an empty folder.</strong> A folder that can't be read is an error, not a reason to delete its counterpart. A run that would delete most of a side asks again.</li>
+      <li><strong>What changed meanwhile is skipped.</strong> A file that changed between the comparison and the run is left alone, not overwritten.</li>
+      <li><strong>Nothing phones home.</strong> No cloud, no account, no telemetry, no update checks — and no analytics on this page.</li>
+      <li><strong>Open source.</strong> Every line is on GitHub, under MIT or Apache-2.0.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- highlights -->
+<section class="section" aria-labelledby="new-title">
+  <div class="wrap narrow">
+    <h2 id="new-title">New in {{ version }}</h2>
+    <ul class="highlights">
+{{ highlights }}
+    </ul>
+    <p><a href="{{ release_url }}">Release notes for {{ version }}</a></p>
+  </div>
+</section>
+<!-- /highlights -->
+
+<section id="download" class="section section-soft">
+  <div class="wrap">
+    <h2>Download Gotthard</h2>
+    <p class="section-lead">Free for everyone. Version {{ version }}, released {{ date }}.</p>
+
+    <div class="grid platforms">
+      <article class="platform" data-os="windows">
+        <h3>Windows</h3>
+        <p class="platform-req">Windows 10 and 11 · x64</p>
+        <ul class="files">
+{{ links_windows }}
+        </ul>
+      </article>
+    </div>
+
+    <p class="download-foot">Every file's SHA-256 is in <a href="{{ checksums_url }}">SHA256SUMS.txt</a>. Older versions are on the <a href="https://github.com/ortic/gotthard/releases">releases page</a>. Prefer to build it yourself? <code>cargo build --release</code></p>
+
+    <details class="first-launch">
+      <summary>First launch: “Windows protected your PC”</summary>
+      <div>
+        <p>The packages aren't code-signed yet, so Windows asks once before it starts Gotthard: click <em>More info</em>, then <em>Run anyway</em>.</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap callout">
+    <div>
+      <h2>Help make it better</h2>
+      <p>Gotthard is young. Found a bug, or missing something your files need? Tell us on GitHub.</p>
+    </div>
+    <div class="callout-actions">
+      <a class="btn btn-primary" href="https://github.com/ortic/gotthard/issues/new">Report a problem</a>
+      <a class="btn btn-secondary" href="https://github.com/ortic/gotthard/issues">See what's planned</a>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="section">
+  <div class="wrap narrow">
+    <h2>Questions</h2>
+    <details>
+      <summary>Is Gotthard free?</summary>
+      <p>Yes, for personal and commercial use. It's open source under the MIT or Apache-2.0 license.</p>
+    </details>
+    <details>
+      <summary>How do I start?</summary>
+      <p>Create a folder on your external disk, e.g. <code>E:\Master\Photos</code> (it may already hold your files). In Gotthard, add it under <em>Synchronize</em>, click <em>Make it the master</em> and choose this computer's folder. <em>Compare</em>, look at the list, <em>Synchronize</em>. On your other computer, add the same master folder — it's recognized — and that computer's folder.</p>
+    </details>
+    <details>
+      <summary>Where do deleted files go?</summary>
+      <p>Into the folder's safety copies: a hidden folder <code>.gotthard\versions</code> with one folder per run, holding the files as they were. The <em>Safety copies</em> view restores them and cleans up old ones. If you'd rather use the Recycle Bin, or delete for good, that's a setting.</p>
+    </details>
+    <details>
+      <summary>Does it sync on its own?</summary>
+      <p>Not yet. A synchronization or a backup runs when you start it, and always shows what it would do first. Runs on a schedule and when the disk is plugged in are planned.</p>
+    </details>
+    <details>
+      <summary>Can it sync two computers over the network?</summary>
+      <p>No: the external disk carries the changes. That's the point — your files never leave your own disks, and the master is a complete copy you can take with you.</p>
+    </details>
+    <details>
+      <summary>Does Gotthard send my data anywhere?</summary>
+      <p>No. There's no server, no account and no telemetry. Gotthard only reads and writes the folders you give it.</p>
+    </details>
+    <details>
+      <summary>Is the master encrypted?</summary>
+      <p>Gotthard keeps plain files, so that you can always get at them without it. To protect the disk, turn on BitLocker for it in Windows.</p>
+    </details>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap final">
+    <h2>Give your files one home.</h2>
+    <p>Free, open source, and ready in a minute — on Windows 10 and 11.</p>
+    <div class="actions">
+      <a class="btn btn-light" href="#download">Download Gotthard</a>
+      <a class="btn btn-ghost" href="https://github.com/ortic/gotthard">Star it on GitHub</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-top">
+      <a class="brand" href="#">
+        <img src="icons/gotthard-128.png" alt="" width="24" height="24">
+        <span>Gotthard</span>
+      </a>
+      <nav aria-label="Footer">
+        <a href="https://github.com/ortic/gotthard">Source code</a>
+        <a href="https://github.com/ortic/gotthard/releases">Releases</a>
+        <a href="https://github.com/ortic/gotthard/issues">Issues</a>
+      </nav>
+    </div>
+    <p>Free and open source (MIT or Apache-2.0). Made by <a href="https://github.com/ortic">Ortic</a> and the Gotthard contributors.</p>
+    <p class="legal">Windows and BitLocker are trademarks of the Microsoft group of companies. Gotthard is an independent open-source project, not affiliated with or endorsed by Microsoft.</p>
+  </div>
+</footer>
+</body>
+</html>
