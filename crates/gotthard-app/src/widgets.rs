@@ -2,33 +2,132 @@
 
 use std::path::{Path, PathBuf};
 
-use egui::{Color32, RichText, Ui};
+use egui::{Color32, RichText, Ui, vec2};
 use gotthard_core::Report;
 use gotthard_core::fsx::{Stamp, format_bytes, format_time};
 
-use crate::theme;
+use crate::icons::{self, Icon};
+use crate::theme::{self, bold};
 
-/// The title of a view and a line on what it's for.
-pub fn heading(ui: &mut Ui, title: &str, about: &str) {
-    ui.heading(title);
-    ui.label(RichText::new(about).weak());
-    ui.add_space(6.0);
+/// The head of a view: its icon, its title and a line on what it's for.
+pub fn page(ui: &mut Ui, icon: Icon, title: &str, about: &str) {
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(vec2(40.0, 40.0), egui::Sense::hover());
+        ui.painter()
+            .rect_filled(rect, 10.0, theme::soft(theme::ACCENT, ui.visuals()));
+        icon.image(22.0, theme::ACCENT).paint_at(
+            ui,
+            egui::Rect::from_center_size(rect.center(), vec2(22.0, 22.0)),
+        );
+        ui.add_space(4.0);
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            ui.heading(title);
+            ui.label(RichText::new(about).weak());
+        });
+    });
+    ui.add_space(10.0);
+}
+
+fn filled(
+    ui: &mut Ui,
+    enabled: bool,
+    icon: Option<Icon>,
+    text: &str,
+    fill: Color32,
+) -> egui::Response {
+    let label = RichText::new(text)
+        .color(Color32::WHITE)
+        .family(theme::semibold());
+    let button = match icon {
+        Some(icon) => egui::Button::image_and_text(icon.image(16.0, Color32::WHITE), label),
+        None => egui::Button::new(label),
+    };
+    ui.add_enabled(enabled, button.fill(fill).min_size(vec2(0.0, 32.0)))
 }
 
 /// The button of a view's main step.
-pub fn primary(ui: &mut Ui, enabled: bool, text: &str) -> egui::Response {
-    let button = egui::Button::new(RichText::new(text).color(Color32::WHITE).strong())
-        .fill(theme::ACCENT)
-        .min_size(egui::vec2(0.0, 28.0));
-    ui.add_enabled(enabled, button)
+pub fn primary(ui: &mut Ui, enabled: bool, icon: Icon, text: &str) -> egui::Response {
+    filled(ui, enabled, Some(icon), text, theme::ACCENT)
 }
 
 /// A button for something that deletes.
 pub fn danger(ui: &mut Ui, enabled: bool, text: &str) -> egui::Response {
-    let button = egui::Button::new(RichText::new(text).color(Color32::WHITE).strong())
-        .fill(theme::DANGER)
-        .min_size(egui::vec2(0.0, 28.0));
-    ui.add_enabled(enabled, button)
+    filled(ui, enabled, Some(Icon::Trash), text, theme::DANGER)
+}
+
+/// A button with an icon before its text.
+pub fn button(ui: &mut Ui, enabled: bool, icon: Icon, text: &str) -> egui::Response {
+    let color = ui.visuals().text_color();
+    ui.add_enabled(
+        enabled,
+        egui::Button::image_and_text(icon.image(16.0, color), text),
+    )
+}
+
+/// A button that is only an icon; `hint` says what it does.
+pub fn icon_button(ui: &mut Ui, enabled: bool, icon: Icon, hint: &str) -> egui::Response {
+    let color = ui.visuals().text_color();
+    ui.add_enabled(enabled, egui::Button::image(icon.image(16.0, color)))
+        .on_hover_text(hint)
+}
+
+/// A small rounded label: a count, a state.
+pub fn badge(ui: &mut Ui, icon: Option<Icon>, text: &str, color: Color32) {
+    let galley =
+        ui.painter()
+            .layout_no_wrap(text.to_owned(), egui::FontId::proportional(13.0), color);
+    let icon_width = if icon.is_some() { 18.0 } else { 0.0 };
+    let size = vec2(galley.size().x + icon_width + 20.0, 26.0);
+    // One piece, so a row of badges wraps between them.
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    ui.painter()
+        .rect_filled(rect, 13.0, theme::soft(color, ui.visuals()));
+    let mut x = rect.left() + 10.0;
+    if let Some(icon) = icon {
+        let at =
+            egui::Rect::from_center_size(egui::pos2(x + 6.5, rect.center().y), vec2(13.0, 13.0));
+        icon.image(13.0, color).paint_at(ui, at);
+        x += icon_width;
+    }
+    ui.painter().galley(
+        egui::pos2(x, rect.center().y - galley.size().y / 2.0),
+        galley,
+        color,
+    );
+}
+
+/// An empty view: what's missing and what to do about it.
+pub fn empty(ui: &mut Ui, icon: Icon, title: &str, text: &str) {
+    ui.add_space((ui.available_height() * 0.18).clamp(16.0, 90.0));
+    ui.vertical_centered(|ui| {
+        let (rect, _) = ui.allocate_exact_size(vec2(64.0, 64.0), egui::Sense::hover());
+        ui.painter().circle_filled(
+            rect.center(),
+            32.0,
+            theme::soft(theme::ACCENT, ui.visuals()),
+        );
+        icon.image(30.0, theme::ACCENT).paint_at(
+            ui,
+            egui::Rect::from_center_size(rect.center(), vec2(30.0, 30.0)),
+        );
+        ui.add_space(8.0);
+        ui.label(bold(title).size(17.0));
+        ui.add_space(2.0);
+        ui.scope(|ui| {
+            ui.set_max_width(460.0);
+            ui.label(RichText::new(text).weak());
+        });
+        ui.add_space(10.0);
+    });
+}
+
+/// A file's or folder's icon and its name, cut where the space ends.
+pub fn file_label(ui: &mut Ui, name: &str, is_dir: bool, text: RichText) -> egui::Response {
+    let (icon, color) = icons::for_entry(name, is_dir);
+    ui.spacing_mut().item_spacing.x = 6.0;
+    ui.add(icon.image(16.0, color));
+    ui.add(egui::Label::new(text).truncate().selectable(false))
 }
 
 /// Asks for a folder. Blocks until the dialog closes.
@@ -60,7 +159,7 @@ pub fn folder_field(ui: &mut Ui, path: &mut PathBuf, hint: &str) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
         let mut text = path.to_string_lossy().into_owned();
-        let width = (ui.available_width() - 90.0).max(120.0);
+        let width = (ui.available_width() - 110.0).max(120.0);
         let edit = egui::TextEdit::singleline(&mut text)
             .hint_text(hint)
             .desired_width(width);
@@ -68,7 +167,7 @@ pub fn folder_field(ui: &mut Ui, path: &mut PathBuf, hint: &str) -> bool {
             *path = PathBuf::from(text.trim());
             changed = true;
         }
-        if ui.button("Browse…").clicked()
+        if button(ui, true, Icon::Folder, "Browse…").clicked()
             && let Some(folder) = pick_folder(path)
         {
             *path = folder;
@@ -84,8 +183,9 @@ pub fn folder_list(ui: &mut Ui, folders: &mut Vec<PathBuf>, add_label: &str) -> 
     let mut remove = None;
     for (i, folder) in folders.iter_mut().enumerate() {
         ui.horizontal(|ui| {
+            ui.add(Icon::Folder.image(16.0, icons::kind::FOLDER));
             let mut text = folder.to_string_lossy().into_owned();
-            let width = (ui.available_width() - 180.0).max(120.0);
+            let width = (ui.available_width() - 160.0).max(120.0);
             if ui
                 .add(egui::TextEdit::singleline(&mut text).desired_width(width))
                 .changed()
@@ -93,13 +193,13 @@ pub fn folder_list(ui: &mut Ui, folders: &mut Vec<PathBuf>, add_label: &str) -> 
                 *folder = PathBuf::from(text.trim());
                 changed = true;
             }
-            if ui.button("Browse…").clicked()
+            if button(ui, true, Icon::Folder, "Browse…").clicked()
                 && let Some(picked) = pick_folder(folder)
             {
                 *folder = picked;
                 changed = true;
             }
-            if ui.button("Remove").clicked() {
+            if icon_button(ui, true, Icon::Close, "Take this folder off the list").clicked() {
                 remove = Some(i);
             }
         });
@@ -108,7 +208,7 @@ pub fn folder_list(ui: &mut Ui, folders: &mut Vec<PathBuf>, add_label: &str) -> 
         folders.remove(i);
         changed = true;
     }
-    if ui.button(add_label).clicked() {
+    if button(ui, true, Icon::Plus, add_label).clicked() {
         match pick_folder(Path::new("")) {
             Some(folder) => folders.push(folder),
             // No dialog (or cancelled with nothing there yet): a line to type in.
@@ -144,12 +244,12 @@ pub fn stamp_text(stamp: Option<Stamp>, is_dir: bool) -> String {
 
 /// What an operation did, with the files that didn't go as planned.
 pub fn report(ui: &mut Ui, report: &Report, what: &str) {
-    let color = if !report.failed.is_empty() {
-        theme::DANGER
+    let (color, icon) = if !report.failed.is_empty() {
+        (theme::DANGER, Icon::Alert)
     } else if !report.skipped.is_empty() || report.cancelled {
-        theme::WARN
+        (theme::WARN, Icon::Info)
     } else {
-        theme::SUCCESS
+        (theme::SUCCESS, Icon::CheckCircle)
     };
     theme::banner(ui.style(), color).show(ui, |ui| {
         ui.set_width(ui.available_width());
@@ -178,7 +278,10 @@ pub fn report(ui: &mut Ui, report: &Report, what: &str) {
         } else {
             "done"
         };
-        ui.label(RichText::new(format!("{what} {state}: {}.", parts.join(", "))).strong());
+        ui.horizontal(|ui| {
+            ui.add(icon.image(18.0, color));
+            ui.label(bold(format!("{what} {state}: {}.", parts.join(", "))));
+        });
         for (title, list, color) in [
             ("Failed", &report.failed, theme::DANGER),
             ("Left alone", &report.skipped, theme::WARN),
@@ -205,6 +308,17 @@ pub fn report(ui: &mut Ui, report: &Report, what: &str) {
                     });
             });
         }
+    });
+}
+
+/// A banner with an icon: a warning, a hint.
+pub fn notice(ui: &mut Ui, icon: Icon, color: Color32, text: &str) {
+    theme::banner(ui.style(), color).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            ui.add(icon.image(18.0, color));
+            ui.add(egui::Label::new(text).wrap());
+        });
     });
 }
 
@@ -236,4 +350,9 @@ pub fn count(n: usize, noun: &str) -> String {
     } else {
         format!("{n} {noun}s")
     }
+}
+
+/// The header cell of a table.
+pub fn column_title(ui: &mut Ui, title: &str) {
+    ui.label(RichText::new(title).weak().size(13.0));
 }

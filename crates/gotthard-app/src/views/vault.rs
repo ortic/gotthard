@@ -7,7 +7,9 @@ use egui::{RichText, Ui};
 use gotthard_core::fsx::{Displacer, Removal, format_bytes};
 use gotthard_core::vault::{self, Session};
 
-use crate::app::{App, Confirm, empty_hint};
+use crate::app::{App, Confirm};
+use crate::icons::{self, Icon};
+use crate::theme::{self, bold};
 use crate::widgets;
 
 #[derive(Default)]
@@ -29,8 +31,9 @@ impl VaultView {
 
 impl App {
     pub fn vault_ui(&mut self, ui: &mut Ui) {
-        widgets::heading(
+        widgets::page(
             ui,
+            Icon::Shield,
             "Safety copies",
             "Files that Gotthard replaced or removed are kept in the folder they were in, until \
              you clean them up.",
@@ -41,23 +44,33 @@ impl App {
         {
             self.vault.root = first.clone();
         }
-        ui.horizontal(|ui| {
-            ui.label("Folder");
-            egui::ComboBox::from_id_salt("vault-root")
-                .width(160.0)
-                .selected_text("Known folders")
-                .show_ui(ui, |ui| {
-                    for root in &roots {
-                        if ui.selectable_label(false, root.to_string_lossy()).clicked() {
-                            self.vault.root = root.clone();
+        theme::card(ui.style()).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(bold("Folder"));
+                egui::ComboBox::from_id_salt("vault-root")
+                    .width(150.0)
+                    .selected_text("Known folders")
+                    .show_ui(ui, |ui| {
+                        for root in &roots {
+                            let label = egui::Button::image_and_text(
+                                Icon::Folder.image(16.0, icons::kind::FOLDER),
+                                root.to_string_lossy(),
+                            )
+                            .frame_when_inactive(false);
+                            if ui.add(label).clicked() {
+                                self.vault.root = root.clone();
+                                ui.close();
+                            }
                         }
-                    }
-                    if roots.is_empty() {
-                        ui.weak("Synchronized folders and backups appear here.");
-                    }
-                });
-            widgets::folder_field(ui, &mut self.vault.root, "A folder Gotthard worked in");
+                        if roots.is_empty() {
+                            ui.weak("Synchronized folders and backups appear here.");
+                        }
+                    });
+                widgets::folder_field(ui, &mut self.vault.root, "A folder Gotthard worked in");
+            });
         });
+        ui.add_space(10.0);
         if self.vault.root != self.vault.loaded || self.vault.stale {
             if self.vault.root.as_os_str().is_empty() {
                 self.vault.sessions.clear();
@@ -86,7 +99,13 @@ impl App {
     fn vault_sessions(&mut self, ui: &mut Ui, sessions: &[Session], busy: bool) {
         if sessions.is_empty() {
             if !busy {
-                empty_hint(ui, "This folder has no safety copies.");
+                widgets::empty(
+                    ui,
+                    Icon::Shield,
+                    "No safety copies here",
+                    "When a synchronization, a backup or a deletion replaces or removes a file \
+                     in this folder, the old file appears here.",
+                );
             }
             return;
         }
@@ -94,94 +113,113 @@ impl App {
         let days = self.settings.keep_safety_copies_days;
         let total: u64 = sessions.iter().map(|s| s.bytes).sum();
         let files: usize = sessions.iter().map(|s| s.files.len()).sum();
-        ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label(format!(
-                "{} of {}, {}",
-                widgets::count(files, "file"),
-                widgets::count(sessions.len(), "run"),
-                format_bytes(total)
-            ));
-            if ui
-                .add_enabled(
+            widgets::badge(ui, Some(Icon::File), &widgets::count(files, "file"), theme::ACCENT);
+            widgets::badge(ui, Some(Icon::Clock), &widgets::count(sessions.len(), "run"), theme::ACCENT);
+            widgets::badge(ui, Some(Icon::Drive), &format_bytes(total), theme::ACCENT);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if widgets::button(
+                    ui,
                     !busy,
-                    egui::Button::new(format!("Clean up copies older than {days} days…")),
+                    Icon::Trash,
+                    &format!("Clean up copies older than {days} days…"),
                 )
                 .clicked()
-            {
-                let root = root.clone();
-                self.confirm = Some(Confirm {
-                    title: "Clean up safety copies?".into(),
-                    text: format!(
-                        "The safety copies of runs more than {days} days ago are deleted for good."
-                    ),
-                    action: "Delete them".into(),
-                    run: Box::new(move |app, _| {
-                        match vault::purge_older(&root, days) {
-                            Ok((runs, bytes)) => app.info(format!(
-                                "Deleted the safety copies of {runs} runs, {}.",
-                                format_bytes(bytes)
-                            )),
-                            Err(e) => app.error(format!("{e:#}")),
-                        }
-                        app.vault.reload();
-                    }),
-                });
-            }
+                {
+                    let root = root.clone();
+                    self.confirm = Some(Confirm {
+                        title: "Clean up safety copies?".into(),
+                        text: format!(
+                            "The safety copies of runs more than {days} days ago are deleted for good."
+                        ),
+                        action: "Delete them".into(),
+                        run: Box::new(move |app, _| {
+                            match vault::purge_older(&root, days) {
+                                Ok((runs, bytes)) => app.info(format!(
+                                    "Deleted the safety copies of {}, {}.",
+                                    widgets::count(runs, "run"),
+                                    format_bytes(bytes)
+                                )),
+                                Err(e) => app.error(format!("{e:#}")),
+                            }
+                            app.vault.reload();
+                        }),
+                    });
+                }
+            });
         });
-        ui.add_space(4.0);
+        ui.add_space(6.0);
 
         let mut restore: Option<(String, Vec<String>)> = None;
         let mut delete = None;
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
-                for session in sessions {
+                for (number, session) in sessions.iter().enumerate() {
                     let when = session.time().map_or(session.name.clone(), |t| {
-                        t.format("%Y-%m-%d %H:%M:%S").to_string()
+                        t.format("%A, %-d %B %Y, %H:%M").to_string()
                     });
-                    let title = format!(
-                        "{when}  ·  {}  ·  {}",
-                        widgets::count(session.files.len(), "file"),
-                        format_bytes(session.bytes)
-                    );
-                    egui::CollapsingHeader::new(RichText::new(title).strong())
-                        .id_salt(&session.name)
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                if ui
-                                    .add_enabled(!busy, egui::Button::new("Restore all"))
-                                    .clicked()
-                                {
-                                    restore = Some((
-                                        session.name.clone(),
-                                        session.files.iter().map(|f| f.rel.clone()).collect(),
-                                    ));
-                                }
-                                if ui
-                                    .add_enabled(!busy, egui::Button::new("Delete for good…"))
-                                    .clicked()
-                                {
-                                    delete = Some(session.name.clone());
-                                }
-                            });
-                            for file in session.files.iter().take(1000) {
-                                ui.horizontal(|ui| {
-                                    if ui
-                                        .add_enabled(!busy, egui::Button::new("Restore"))
+                    theme::card(ui.style()).show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.add(Icon::Clock.image(18.0, theme::ACCENT));
+                            ui.label(bold(when));
+                            ui.weak(format!(
+                                "{} · {}",
+                                widgets::count(session.files.len(), "file"),
+                                format_bytes(session.bytes)
+                            ));
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if widgets::button(ui, !busy, Icon::Trash, "Delete for good…")
                                         .clicked()
                                     {
-                                        restore =
-                                            Some((session.name.clone(), vec![file.rel.clone()]));
+                                        delete = Some(session.name.clone());
                                     }
-                                    ui.label(&file.rel);
-                                    ui.weak(format_bytes(file.size));
-                                });
-                            }
-                            if session.files.len() > 1000 {
-                                ui.weak(format!("… and {} more", session.files.len() - 1000));
-                            }
+                                    if widgets::button(ui, !busy, Icon::Undo, "Restore all")
+                                        .clicked()
+                                    {
+                                        restore = Some((
+                                            session.name.clone(),
+                                            session.files.iter().map(|f| f.rel.clone()).collect(),
+                                        ));
+                                    }
+                                },
+                            );
                         });
+                        egui::CollapsingHeader::new(RichText::new("Files").weak())
+                            .id_salt(&session.name)
+                            .default_open(number == 0 && session.files.len() <= 30)
+                            .show(ui, |ui| {
+                                for file in session.files.iter().take(1000) {
+                                    ui.horizontal(|ui| {
+                                        let name = file.rel.rsplit('/').next().unwrap_or(&file.rel);
+                                        if widgets::icon_button(
+                                            ui,
+                                            !busy,
+                                            Icon::Undo,
+                                            "Put this file back where it was",
+                                        )
+                                        .clicked()
+                                        {
+                                            restore = Some((
+                                                session.name.clone(),
+                                                vec![file.rel.clone()],
+                                            ));
+                                        }
+                                        let (icon, color) = icons::for_file(name);
+                                        ui.add(icon.image(16.0, color));
+                                        ui.label(&file.rel);
+                                        ui.weak(format_bytes(file.size));
+                                    });
+                                }
+                                if session.files.len() > 1000 {
+                                    ui.weak(format!("… and {} more", session.files.len() - 1000));
+                                }
+                            });
+                    });
+                    ui.add_space(6.0);
                 }
             });
         if let Some((session, files)) = restore {

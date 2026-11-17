@@ -5,11 +5,13 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::time::Duration;
 
-use egui::{Color32, RichText, Ui};
+use egui::{RichText, Ui};
 use gotthard_config::{Paths, Settings, Theme};
 use gotthard_core::Progress;
 use gotthard_core::fsx::format_bytes;
 
+use crate::icons::Icon;
+use crate::theme::bold;
 use crate::views::{backup, browse, dupes, merge, rename, similar, sync, vault};
 use crate::{theme, widgets};
 
@@ -27,6 +29,20 @@ pub enum View {
 }
 
 impl View {
+    pub fn icon(self) -> Icon {
+        match self {
+            View::Sync => Icon::Sync,
+            View::Backup => Icon::Backup,
+            View::Vault => Icon::Shield,
+            View::Browse => Icon::Panes,
+            View::Merge => Icon::Merge,
+            View::Duplicates => Icon::Duplicates,
+            View::Similar => Icon::Similar,
+            View::Rename => Icon::Rename,
+            View::Settings => Icon::Settings,
+        }
+    }
+
     pub fn title(self) -> &'static str {
         match self {
             View::Sync => "Synchronize",
@@ -201,53 +217,115 @@ impl App {
     }
 
     fn navigation(&mut self, ui: &mut Ui) {
-        ui.add_space(10.0);
+        ui.add_space(14.0);
         ui.horizontal(|ui| {
-            ui.add_space(6.0);
+            ui.add_space(8.0);
             ui.add(
                 egui::Image::new(egui::include_image!("../../../assets/icon/gotthard-64.png"))
-                    .fit_to_exact_size(egui::vec2(28.0, 28.0)),
+                    .fit_to_exact_size(egui::vec2(30.0, 30.0)),
             );
-            ui.label(RichText::new("Gotthard").size(18.0).strong());
+            ui.add_space(2.0);
+            ui.label(bold("Gotthard").size(19.0));
         });
-        ui.add_space(10.0);
-        let mut entry = |ui: &mut Ui, view: View| {
-            let selected = self.view == view;
-            let text = RichText::new(format!("   {}", view.title()));
-            let button = egui::Button::new(if selected { text.strong() } else { text })
-                .selected(selected)
-                .frame_when_inactive(false)
-                .min_size(egui::vec2(ui.available_width(), 30.0));
-            let response = ui.add(button);
-            if response.clicked() {
-                self.view = view;
-            }
+        ui.add_space(14.0);
+        ui.spacing_mut().item_spacing.y = 2.0;
+        let section = |ui: &mut Ui, title: &str| {
+            ui.horizontal(|ui| {
+                ui.add_space(10.0);
+                ui.label(egui::RichText::new(title).size(11.0).weak());
+            });
+            ui.add_space(2.0);
         };
-        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-            ui.spacing_mut().button_padding = egui::vec2(8.0, 4.0);
-            ui.spacing_mut().item_spacing.y = 2.0;
-            ui.label(RichText::new("  MASTER COPY").small().weak());
-            for view in [View::Sync, View::Backup, View::Vault] {
-                entry(ui, view);
-            }
-            ui.add_space(12.0);
-            ui.label(RichText::new("  FILES").small().weak());
-            for view in [
-                View::Browse,
-                View::Merge,
-                View::Duplicates,
-                View::Similar,
-                View::Rename,
-            ] {
-                entry(ui, view);
-            }
-            ui.add_space(12.0);
-            entry(ui, View::Settings);
+        section(ui, "MASTER COPY");
+        for view in [View::Sync, View::Backup, View::Vault] {
+            self.nav_entry(ui, view);
+        }
+        ui.add_space(14.0);
+        section(ui, "FILES");
+        for view in [
+            View::Browse,
+            View::Merge,
+            View::Duplicates,
+            View::Similar,
+            View::Rename,
+        ] {
+            self.nav_entry(ui, view);
+        }
+        ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+            ui.add_space(8.0);
+            self.nav_entry(ui, View::Settings);
         });
     }
 
+    fn nav_entry(&mut self, ui: &mut Ui, view: View) {
+        let selected = self.view == view;
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(ui.available_width(), 36.0), egui::Sense::click());
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::SelectableLabel,
+                true,
+                selected,
+                view.title(),
+            )
+        });
+        let visuals = ui.visuals();
+        let painter = ui.painter();
+        if selected {
+            painter.rect_filled(rect, 7.0, theme::soft(theme::ACCENT, visuals));
+            let bar = egui::Rect::from_min_max(
+                rect.left_center() + egui::vec2(0.0, -9.0),
+                rect.left_center() + egui::vec2(3.0, 9.0),
+            );
+            painter.rect_filled(bar, 2.0, theme::ACCENT);
+        } else if response.hovered() {
+            painter.rect_filled(rect, 7.0, theme::hover(visuals));
+        }
+        let color = if selected {
+            theme::ACCENT
+        } else {
+            visuals.text_color()
+        };
+        let icon = egui::Rect::from_center_size(
+            rect.left_center() + egui::vec2(22.0, 0.0),
+            egui::vec2(18.0, 18.0),
+        );
+        view.icon().image(18.0, color).paint_at(ui, icon);
+        let family = if selected {
+            theme::semibold()
+        } else {
+            egui::FontFamily::Proportional
+        };
+        ui.painter().text(
+            rect.left_center() + egui::vec2(42.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            view.title(),
+            egui::FontId::new(14.5, family),
+            ui.visuals().text_color(),
+        );
+        if response.clicked() {
+            self.view = view;
+        }
+    }
+
     fn status(&mut self, ui: &mut Ui) {
-        let Some(task) = &self.task else { return };
+        let Some(task) = &self.task else {
+            ui.horizontal(|ui| {
+                ui.add(Icon::CheckCircle.image(14.0, theme::SUCCESS));
+                ui.label(RichText::new("Ready").weak().size(13.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "Gotthard {} · your files stay on your disks",
+                            env!("CARGO_PKG_VERSION")
+                        ))
+                        .weak()
+                        .size(13.0),
+                    );
+                });
+            });
+            return;
+        };
         let snapshot = task.progress.snapshot();
         ui.horizontal(|ui| {
             let phase = if snapshot.phase.is_empty() {
@@ -255,12 +333,10 @@ impl App {
             } else {
                 snapshot.phase.clone()
             };
-            ui.label(RichText::new(phase).strong());
+            ui.add(egui::Spinner::new().size(14.0));
+            ui.label(bold(phase));
             let cancelled = task.progress.cancelled();
-            if ui
-                .add_enabled(!cancelled, egui::Button::new("Cancel"))
-                .clicked()
-            {
+            if widgets::button(ui, !cancelled, Icon::Close, "Cancel").clicked() {
                 task.progress.cancel();
             }
             let mut bar = match snapshot.fraction() {
@@ -301,10 +377,15 @@ impl App {
             Level::Info => theme::SUCCESS,
             Level::Error => theme::DANGER,
         };
+        let icon = match level {
+            Level::Info => Icon::CheckCircle,
+            Level::Error => Icon::Alert,
+        };
         theme::banner(ui.style(), color).show(ui, |ui| {
             ui.horizontal(|ui| {
+                ui.add(icon.image(18.0, color));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Dismiss").clicked() {
+                    if widgets::icon_button(ui, true, Icon::Close, "Dismiss").clicked() {
                         self.notice = None;
                     }
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -321,7 +402,10 @@ impl App {
         let mut choice = None;
         let modal = egui::Modal::new(egui::Id::new("confirm")).show(ctx, |ui| {
             ui.set_max_width(460.0);
-            ui.heading(&confirm.title);
+            ui.horizontal(|ui| {
+                ui.add(Icon::Alert.image(22.0, theme::WARN));
+                ui.label(bold(&confirm.title).size(18.0));
+            });
             ui.add_space(6.0);
             ui.label(&confirm.text);
             ui.add_space(12.0);
@@ -346,11 +430,16 @@ impl App {
     }
 
     fn settings_ui(&mut self, ui: &mut Ui) {
-        widgets::heading(ui, "Settings", "How Gotthard treats your files.");
+        widgets::page(
+            ui,
+            Icon::Settings,
+            "Settings",
+            "How Gotthard treats your files.",
+        );
         let before = self.settings.clone();
         theme::card(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.strong("Safety");
+            ui.label(bold("Safety"));
             ui.checkbox(
                 &mut self.settings.verify_copies,
                 "Verify every copy: read it back and compare it with the original",
@@ -380,7 +469,7 @@ impl App {
         ui.add_space(8.0);
         theme::card(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.strong("Files no operation touches");
+            ui.label(bold("Files no operation touches"));
             ui.weak("One pattern a line, e.g. *.tmp, Thumbs.db or projects/*/target.");
             if ui
                 .add(
@@ -402,7 +491,7 @@ impl App {
         ui.add_space(8.0);
         theme::card(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.strong("Appearance");
+            ui.label(bold("Appearance"));
             ui.horizontal(|ui| {
                 for (value, text) in [
                     (Theme::System, "As Windows"),
@@ -413,11 +502,6 @@ impl App {
                 }
             });
         });
-        ui.add_space(8.0);
-        ui.weak(format!(
-            "Gotthard {} · your files stay on your disks; nothing is sent anywhere.",
-            env!("CARGO_PKG_VERSION")
-        ));
         if self.settings != before {
             if self.settings.theme != before.theme {
                 self.apply_theme(ui.ctx());
@@ -434,29 +518,25 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        egui_extras::install_image_loaders(&ctx);
         self.poll_task(&ctx);
 
         let nav = egui::Frame::new()
             .fill(theme::base(ui.visuals()))
             .inner_margin(egui::Margin::symmetric(8, 4));
         egui::Panel::left("navigation")
-            .exact_size(190.0)
+            .exact_size(214.0)
             .resizable(false)
             .frame(nav)
             .show(ui, |ui| self.navigation(ui));
-        if self.busy() {
-            let frame = egui::Frame::new()
-                .fill(ui.visuals().window_fill)
-                .stroke(egui::Stroke::new(1.0, theme::border(ui.visuals())))
-                .inner_margin(egui::Margin::symmetric(12, 8));
-            egui::Panel::bottom("status")
-                .frame(frame)
-                .show(ui, |ui| self.status(ui));
-        }
+        let frame = egui::Frame::new()
+            .fill(theme::base(ui.visuals()))
+            .inner_margin(egui::Margin::symmetric(14, 6));
+        egui::Panel::bottom("status")
+            .frame(frame)
+            .show(ui, |ui| self.status(ui));
         let frame = egui::Frame::new()
             .fill(ui.visuals().panel_fill)
-            .inner_margin(egui::Margin::same(16));
+            .inner_margin(egui::Margin::symmetric(22, 18));
         egui::CentralPanel::default().frame(frame).show(ui, |ui| {
             self.notice_ui(ui);
             match self.view {
@@ -475,25 +555,4 @@ impl eframe::App for App {
         });
         self.confirm_ui(&ctx);
     }
-}
-
-/// A weak hint in the middle of an empty view.
-pub fn empty_hint(ui: &mut Ui, text: &str) {
-    ui.add_space(24.0);
-    ui.vertical_centered(|ui| {
-        ui.label(
-            RichText::new(text)
-                .color(ui.visuals().weak_text_color())
-                .size(15.0),
-        );
-    });
-}
-
-/// A small colored dot with a text: a status.
-pub fn status_dot(ui: &mut Ui, color: Color32, text: &str) {
-    ui.horizontal(|ui| {
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-        ui.painter().circle_filled(rect.center(), 4.5, color);
-        ui.label(text);
-    });
 }

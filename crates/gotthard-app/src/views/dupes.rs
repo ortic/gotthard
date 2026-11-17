@@ -8,7 +8,9 @@ use gotthard_core::dupes::{self, DupeOptions, DupeResult, Keep};
 use gotthard_core::fsx::{Removal, format_bytes, format_time};
 use gotthard_core::{Report, is_cancelled};
 
-use crate::app::{App, Confirm, empty_hint};
+use crate::app::{App, Confirm};
+use crate::icons::{self, Icon};
+use crate::theme::bold;
 use crate::{theme, widgets};
 
 #[derive(Clone, Copy)]
@@ -73,8 +75,9 @@ impl DupesView {
 
 impl App {
     pub fn dupes_ui(&mut self, ui: &mut Ui) {
-        widgets::heading(
+        widgets::page(
             ui,
+            Icon::Duplicates,
             "Duplicates",
             "Find files with exactly the same content, compared byte for byte by their hash.",
         );
@@ -82,12 +85,13 @@ impl App {
         let mut search = false;
         theme::card(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.strong("Folders to search");
+            ui.label(bold("Folders to search"));
             widgets::folder_list(ui, &mut self.dupes.folders, "Add a folder…");
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 let ready = !widgets::set_folders(&self.dupes.folders).is_empty();
-                search = widgets::primary(ui, ready && !busy, "Search").clicked();
+                search = widgets::primary(ui, ready && !busy, Icon::Search, "Search").clicked();
+                ui.add_space(8.0);
                 ui.label("Leave out files smaller than");
                 ui.add(
                     egui::DragValue::new(&mut self.dupes.min_kb)
@@ -120,17 +124,24 @@ impl App {
         }
         let Some(result) = &self.dupes.result else {
             if self.dupes.report.is_none() {
-                empty_hint(
+                widgets::empty(
                     ui,
-                    "Search lists the duplicates. Nothing is removed before you say so.",
+                    Icon::Duplicates,
+                    "Find what you have twice",
+                    "Search lists the files with the same content. Nothing is removed before you say so.",
                 );
             }
             return;
         };
         if result.groups.is_empty() {
-            empty_hint(
+            widgets::empty(
                 ui,
-                &format!("No duplicates among the {} files.", result.scanned),
+                Icon::CheckCircle,
+                "No duplicates",
+                &format!(
+                    "None of the {} has the content of another.",
+                    widgets::count(result.scanned, "file")
+                ),
             );
             return;
         }
@@ -155,12 +166,20 @@ impl App {
                 ),
             )
             .clicked();
-            ui.label(format!(
-                "{} among {}; {} could be freed.",
-                widgets::count(result.groups.len(), "group"),
-                widgets::count(result.scanned, "file"),
-                format_bytes(result.wasted())
-            ));
+            ui.add_space(6.0);
+            widgets::badge(
+                ui,
+                Some(Icon::Duplicates),
+                &widgets::count(result.groups.len(), "group"),
+                theme::ACCENT,
+            );
+            widgets::badge(
+                ui,
+                Some(Icon::Drive),
+                &format!("{} to free", format_bytes(result.wasted())),
+                theme::ACCENT,
+            );
+            ui.weak(format!("among {}", widgets::count(result.scanned, "file")));
         });
         ui.horizontal_wrapped(|ui| {
             ui.label("Mark all but");
@@ -191,57 +210,81 @@ impl App {
         let mut toggle = None;
         let rows = &self.dupes.rows;
         let marks = &self.dupes.marked;
-        egui::ScrollArea::vertical().auto_shrink(false).show_rows(
-            ui,
-            24.0,
-            rows.len(),
-            |ui, range| {
-                for row in &rows[range] {
-                    match *row {
-                        Row::Group(g) => {
-                            let group = &result.groups[g];
-                            ui.horizontal(|ui| {
-                                ui.set_height(24.0);
-                                ui.label(
-                                    RichText::new(format!(
-                                        "{} files of {} each",
+        theme::well(ui.style()).show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink(false).show_rows(
+                ui,
+                26.0,
+                rows.len(),
+                |ui, range| {
+                    for row in &rows[range] {
+                        match *row {
+                            Row::Group(g) => {
+                                let group = &result.groups[g];
+                                ui.horizontal(|ui| {
+                                    ui.set_height(26.0);
+                                    let name = group.files[0]
+                                        .path
+                                        .file_name()
+                                        .map(|n| n.to_string_lossy().into_owned())
+                                        .unwrap_or_default();
+                                    let (icon, color) = icons::for_file(&name);
+                                    ui.add(icon.image(16.0, color));
+                                    ui.label(bold(name));
+                                    ui.weak(format!(
+                                        "{} × {} · {} to free",
                                         group.files.len(),
-                                        format_bytes(group.size)
-                                    ))
-                                    .strong(),
-                                );
-                                ui.weak(format!("{} to free", format_bytes(group.wasted())));
-                            });
-                        }
-                        Row::File(g, f) => {
-                            let file = &result.groups[g].files[f];
-                            ui.horizontal(|ui| {
-                                ui.set_height(24.0);
-                                ui.add_space(12.0);
-                                let mut on = marks.contains(&(g, f));
-                                if ui.checkbox(&mut on, "").changed() {
-                                    toggle = Some((g, f));
-                                }
-                                ui.weak(format_time(file.mtime));
-                                let text = RichText::new(file.path.to_string_lossy());
-                                let label =
-                                    egui::Label::new(if on { text.strikethrough() } else { text })
-                                        .truncate()
-                                        .sense(egui::Sense::click());
-                                if ui
-                                    .add(label)
-                                    .on_hover_text("Double-click to show the file's folder")
-                                    .double_clicked()
-                                    && let Some(folder) = file.path.parent()
-                                {
-                                    widgets::open_in_os(folder);
-                                }
-                            });
+                                        format_bytes(group.size),
+                                        format_bytes(group.wasted())
+                                    ));
+                                });
+                            }
+                            Row::File(g, f) => {
+                                let file = &result.groups[g].files[f];
+                                ui.horizontal(|ui| {
+                                    ui.set_height(26.0);
+                                    ui.add_space(22.0);
+                                    let mut on = marks.contains(&(g, f));
+                                    if ui.checkbox(&mut on, "").changed() {
+                                        toggle = Some((g, f));
+                                    }
+                                    let text = RichText::new(file.path.to_string_lossy());
+                                    let text = if on {
+                                        text.strikethrough().color(theme::DANGER)
+                                    } else {
+                                        text
+                                    };
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            ui.add_space(8.0);
+                                            ui.weak(format_time(file.mtime));
+                                            ui.with_layout(
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                    let label = egui::Label::new(text)
+                                                        .truncate()
+                                                        .sense(egui::Sense::click());
+                                                    if ui
+                                                        .add(label)
+                                                        .on_hover_text(
+                                                            "Double-click to show the file's folder",
+                                                        )
+                                                        .double_clicked()
+                                                        && let Some(folder) = file.path.parent()
+                                                    {
+                                                        widgets::open_in_os(folder);
+                                                    }
+                                                },
+                                            );
+                                        },
+                                    );
+                                });
+                            }
                         }
                     }
-                }
-            },
-        );
+                },
+            );
+        });
         if let Some(mark) = toggle
             && !self.dupes.marked.remove(&mark)
         {

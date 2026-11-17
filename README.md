@@ -37,6 +37,8 @@ a failing disk does silently.
 **Browse** — two folders side by side: copy, move, rename, delete, new
 folder, and send a folder or a selection to the other tools.
 
+![Two folders side by side](docs/screenshots/browse.png)
+
 **Merge folders** — brings several folder trees together in one. Files with
 the same content are taken once; for different files with the same path you
 choose: keep both, keep the newer, keep the target's, replace.
@@ -92,7 +94,8 @@ cargo build --release -p gotthard-app        # target/release/gotthard(.exe)
 ```
 
 A Windows build from Linux: `cargo zigbuild --release --target
-x86_64-pc-windows-gnu -p gotthard-app`. Installers (NSIS, MSI) are made with
+x86_64-pc-windows-gnu -p gotthard-app` (the exe's icon and version are
+compiled with `zig rc`, which zig brings along). Installers (NSIS, MSI) are made with
 [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) on
 Windows: `cargo packager --release -p gotthard-app`.
 

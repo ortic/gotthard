@@ -8,6 +8,8 @@ use gotthard_core::fsx::format_bytes;
 use gotthard_core::integrity::IntegrityReport;
 use gotthard_core::sync::{Action, Op, Plan, Side, State, Summary, Why};
 
+use crate::icons::Icon;
+use crate::theme::bold;
 use crate::{theme, widgets};
 
 /// How the two sides and the operation are called.
@@ -21,6 +23,7 @@ pub struct Labels {
     pub what: &'static str,
     /// "Synchronize", "Back up".
     pub run: &'static str,
+    pub run_icon: Icon,
 }
 
 #[derive(Default)]
@@ -93,10 +96,7 @@ impl PlanPanel {
         }
         let plan = self.plan.as_mut().expect("checked above");
         for warning in &plan.warnings {
-            theme::banner(ui.style(), theme::WARN).show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.label(warning);
-            });
+            widgets::notice(ui, Icon::Alert, theme::WARN, warning);
         }
         let s = self.summary;
         let mut run = false;
@@ -108,46 +108,57 @@ impl PlanPanel {
             } else {
                 format!("{} ({})", labels.run, widgets::count(changes, "change"))
             };
-            run = widgets::primary(ui, ready, &text).clicked();
-            let chip = |ui: &mut Ui, text: String, color: egui::Color32| {
-                ui.label(RichText::new(text).color(color));
-            };
+            run = widgets::primary(ui, ready, labels.run_icon, &text).clicked();
+            ui.add_space(6.0);
             let normal = ui.visuals().text_color();
             if s.to_device > 0 {
-                chip(
+                widgets::badge(
                     ui,
-                    format!(
-                        "→ {}: {} ({})",
+                    Some(Icon::ArrowRight),
+                    &format!(
+                        "{}: {} ({})",
                         labels.device,
                         s.to_device,
                         format_bytes(s.to_device_bytes)
                     ),
-                    normal,
+                    theme::ACCENT,
                 );
             }
             if s.to_master > 0 {
-                chip(
+                widgets::badge(
                     ui,
-                    format!(
-                        "← {}: {} ({})",
+                    Some(Icon::ArrowLeft),
+                    &format!(
+                        "{}: {} ({})",
                         labels.master,
                         s.to_master,
                         format_bytes(s.to_master_bytes)
                     ),
-                    normal,
+                    theme::ACCENT,
                 );
             }
             if s.delete_device + s.delete_master > 0 {
-                chip(
+                widgets::badge(
                     ui,
-                    format!("Deletions: {}", s.delete_device + s.delete_master),
+                    Some(Icon::Trash),
+                    &format!("Deletions: {}", s.delete_device + s.delete_master),
                     theme::DANGER,
                 );
             }
             if s.conflicts > 0 {
-                chip(ui, format!("Undecided: {}", s.conflicts), theme::WARN);
+                widgets::badge(
+                    ui,
+                    Some(Icon::Alert),
+                    &format!("Undecided: {}", s.conflicts),
+                    theme::WARN,
+                );
             }
-            ui.weak(format!("Equal: {}", s.equal));
+            widgets::badge(
+                ui,
+                Some(Icon::Equal),
+                &format!("Equal: {}", s.equal),
+                normal.gamma_multiply(0.7),
+            );
         });
         if plan.mass_deletion {
             ui.checkbox(
@@ -163,9 +174,14 @@ impl PlanPanel {
             {
                 self.dirty = true;
             }
-            ui.label("Find:");
+            ui.add_space(8.0);
+            Icon::Search.show(ui);
             if ui
-                .add(egui::TextEdit::singleline(&mut self.search).desired_width(180.0))
+                .add(
+                    egui::TextEdit::singleline(&mut self.search)
+                        .hint_text("Find a file")
+                        .desired_width(200.0),
+                )
                 .changed()
             {
                 self.dirty = true;
@@ -187,92 +203,136 @@ impl PlanPanel {
 
         let mut change = None;
         let visible = &self.visible;
-        TableBuilder::new(ui)
-            .striped(true)
-            .resizable(true)
-            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-            .column(Column::remainder().at_least(200.0).clip(true))
-            .column(Column::initial(190.0).clip(true))
-            .column(Column::initial(120.0))
-            .column(Column::initial(190.0).clip(true))
-            .column(Column::initial(230.0).clip(true))
-            .header(24.0, |mut header| {
-                for title in ["File", labels.master, "", labels.device, "Why"] {
-                    header.col(|ui| {
-                        ui.strong(title);
-                    });
-                }
-            })
-            .body(|body| {
-                body.rows(24.0, visible.len(), |mut row| {
-                    let index = visible[row.index()];
-                    let item = &plan.items[index];
-                    let equal = item.why == Why::Equal;
-                    let shade = |text: String| {
-                        let text = RichText::new(text);
-                        if equal { text.weak() } else { text }
-                    };
-                    row.col(|ui| {
-                        let name = if item.is_dir {
-                            format!("{}/", item.rel)
-                        } else {
-                            item.rel.clone()
+        theme::well(ui.style()).show(ui, |ui| {
+            // The widths follow the window: the file and the reason share
+            // what the fixed columns leave.
+            let spare = (ui.available_width() - 168.0 * 2.0 - 116.0 - 4.0 * 8.0 - 14.0).max(290.0);
+            let why = (spare * 0.36).clamp(110.0, 250.0);
+            TableBuilder::new(ui)
+                .striped(true)
+                .auto_shrink(false)
+                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                .column(Column::exact(spare - why).clip(true))
+                .column(Column::exact(168.0).clip(true))
+                .column(Column::exact(116.0))
+                .column(Column::exact(168.0).clip(true))
+                .column(Column::exact(why).clip(true))
+                .header(26.0, |mut header| {
+                    for title in ["File", labels.master, "Action", labels.device, "Why"] {
+                        header.col(|ui| widgets::column_title(ui, title));
+                    }
+                })
+                .body(|body| {
+                    body.rows(28.0, visible.len(), |mut row| {
+                        let index = visible[row.index()];
+                        let item = &plan.items[index];
+                        let equal = item.why == Why::Equal;
+                        let shade = |text: String| {
+                            let text = RichText::new(text);
+                            if equal { text.weak() } else { text }
                         };
-                        ui.add(egui::Label::new(shade(name)).truncate());
-                    });
-                    row.col(|ui| {
-                        ui.label(shade(widgets::stamp_text(item.master, item.is_dir)));
-                    });
-                    row.col(|ui| {
-                        let (text, color) = match item.op() {
-                            Op::Copy { to: Side::Device } => ("copy →", theme::ACCENT),
-                            Op::Copy { to: Side::Master } => ("← copy", theme::ACCENT),
-                            Op::CreateDir(Side::Device) => ("create →", theme::ACCENT),
-                            Op::CreateDir(Side::Master) => ("← create", theme::ACCENT),
-                            Op::Delete(Side::Device) => ("delete →", theme::DANGER),
-                            Op::Delete(Side::Master) => ("← delete", theme::DANGER),
-                            Op::None if item.action == Action::Conflict => {
-                                ("undecided", theme::WARN)
-                            }
-                            Op::None if equal => ("=", ui.visuals().weak_text_color()),
-                            Op::None => ("leave", ui.visuals().weak_text_color()),
-                        };
-                        let text = RichText::new(text).color(color).strong();
-                        if directions && item.can_change() {
-                            ui.menu_button(text, |ui| {
-                                for (label, action) in [
-                                    (format!("{} wins  →", labels.master), Action::ToDevice),
-                                    (format!("←  {} wins", labels.device), Action::ToMaster),
-                                    ("Leave both as they are".to_owned(), Action::Nothing),
-                                ] {
-                                    if ui.button(label).clicked() {
-                                        change = Some((index, action));
-                                        ui.close();
-                                    }
+                        row.col(|ui| {
+                            let name = item.rel.rsplit('/').next().unwrap_or(&item.rel);
+                            widgets::file_label(ui, name, item.is_dir, shade(item.rel.clone()))
+                                .on_hover_text(&item.rel);
+                        });
+                        row.col(|ui| {
+                            ui.label(shade(widgets::stamp_text(item.master, item.is_dir)));
+                        });
+                        row.col(|ui| {
+                            let weak = ui.visuals().weak_text_color();
+                            // Text, icon, the icon after the text, color.
+                            let (text, icon, after, color) = match item.op() {
+                                Op::Copy { to: Side::Device } => {
+                                    ("Copy", Icon::ArrowRight, true, theme::ACCENT)
                                 }
-                            });
-                        } else {
-                            ui.label(text);
-                        }
-                    });
-                    row.col(|ui| {
-                        ui.label(shade(widgets::stamp_text(item.device, item.is_dir)));
-                    });
-                    row.col(|ui| {
-                        let why = RichText::new(
-                            item.why
-                                .text()
-                                .replace("the master", labels.the_master)
-                                .replace("this computer", labels.the_device),
-                        );
-                        ui.label(if item.conflict {
-                            why.color(theme::WARN)
-                        } else {
-                            why.weak()
+                                Op::Copy { to: Side::Master } => {
+                                    ("Copy", Icon::ArrowLeft, false, theme::ACCENT)
+                                }
+                                Op::CreateDir(Side::Device) => {
+                                    ("Create", Icon::ArrowRight, true, theme::ACCENT)
+                                }
+                                Op::CreateDir(Side::Master) => {
+                                    ("Create", Icon::ArrowLeft, false, theme::ACCENT)
+                                }
+                                Op::Delete(Side::Device) => {
+                                    ("Delete", Icon::ArrowRight, true, theme::DANGER)
+                                }
+                                Op::Delete(Side::Master) => {
+                                    ("Delete", Icon::ArrowLeft, false, theme::DANGER)
+                                }
+                                Op::None if item.action == Action::Conflict => {
+                                    ("Undecided", Icon::Alert, false, theme::WARN)
+                                }
+                                Op::None if equal => ("Equal", Icon::Equal, false, weak),
+                                Op::None => ("Leave", Icon::Close, false, weak),
+                            };
+                            let label = RichText::new(text).color(color);
+                            let image = icon.image(14.0, color);
+                            if directions && item.can_change() {
+                                let button = if after {
+                                    egui::Button::new((label, image))
+                                } else {
+                                    egui::Button::image_and_text(image, label)
+                                }
+                                .fill(theme::soft(color, ui.visuals()))
+                                .min_size(egui::vec2(104.0, 22.0));
+                                let response = ui
+                                    .add(button)
+                                    .on_hover_text("Choose what happens to this file");
+                                egui::Popup::menu(&response).show(|ui| {
+                                    for (label, icon, action) in [
+                                        (
+                                            format!("{} wins", labels.master),
+                                            Icon::ArrowRight,
+                                            Action::ToDevice,
+                                        ),
+                                        (
+                                            format!("{} wins", labels.device),
+                                            Icon::ArrowLeft,
+                                            Action::ToMaster,
+                                        ),
+                                        (
+                                            "Leave both as they are".to_owned(),
+                                            Icon::Close,
+                                            Action::Nothing,
+                                        ),
+                                    ] {
+                                        if widgets::button(ui, true, icon, &label).clicked() {
+                                            change = Some((index, action));
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                            } else {
+                                ui.add(image);
+                                ui.label(label);
+                            }
+                        });
+                        row.col(|ui| {
+                            ui.label(shade(widgets::stamp_text(item.device, item.is_dir)));
+                        });
+                        row.col(|ui| {
+                            let why = RichText::new(
+                                item.why
+                                    .text()
+                                    .replace("the master", labels.the_master)
+                                    .replace("this computer", labels.the_device),
+                            );
+                            let full = why.text().to_owned();
+                            ui.add(
+                                egui::Label::new(if item.conflict {
+                                    why.color(theme::WARN)
+                                } else {
+                                    why.weak()
+                                })
+                                .truncate(),
+                            )
+                            .on_hover_text(full);
                         });
                     });
                 });
-            });
+        });
         if let Some((index, action)) = change {
             plan.items[index].action = action;
             self.dirty = true;
@@ -299,17 +359,22 @@ pub fn integrity_ui(ui: &mut Ui, report: &IntegrityReport) {
         } else {
             "Damaged files found"
         };
-        ui.label(
-            RichText::new(format!(
+        ui.horizontal(|ui| {
+            let icon = if report.damaged.is_empty() {
+                Icon::CheckCircle
+            } else {
+                Icon::Alert
+            };
+            ui.add(icon.image(18.0, color));
+            ui.label(bold(format!(
                 "{head}: {} intact, {} new, {} changed since the last check, {} gone, {} damaged.",
                 report.intact,
                 report.new.len(),
                 report.modified.len(),
                 report.missing.len(),
                 report.damaged.len()
-            ))
-            .strong(),
-        );
+            )));
+        });
         if !report.damaged.is_empty() {
             ui.label(
                 "These files have the size and time they had at the last check, but other \

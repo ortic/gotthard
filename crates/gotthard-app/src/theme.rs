@@ -2,7 +2,8 @@
 
 use egui::style::{Selection, WidgetVisuals};
 use egui::{
-    Color32, CornerRadius, FontId, Frame, Margin, Shadow, Stroke, Style, TextStyle, Theme, Vec2,
+    Color32, CornerRadius, FontFamily, FontId, Frame, Margin, Shadow, Stroke, Style, TextStyle,
+    Theme, Vec2,
 };
 
 /// Warnings, conflicts.
@@ -70,13 +71,57 @@ const LIGHT: Palette = Palette {
     link: Color32::from_rgb(0x1d, 0x5f, 0xd6),
 };
 
+/// The family of headings and labels that stand out: Segoe UI Semibold
+/// where Windows has it.
+pub fn semibold() -> FontFamily {
+    FontFamily::Name("semibold".into())
+}
+
+/// Text that stands out.
+pub fn bold(text: impl Into<String>) -> egui::RichText {
+    egui::RichText::new(text).family(semibold()).strong()
+}
+
+/// A font of Windows, read from its font folder. Under WSL the folder of
+/// the Windows beside it is used, so a development build looks the same.
+fn windows_font(file: &str) -> Option<Vec<u8>> {
+    let windows = std::env::var_os("WINDIR").map(std::path::PathBuf::from);
+    windows
+        .into_iter()
+        .chain([r"C:\Windows".into(), "/mnt/c/Windows".into()])
+        .find_map(|dir| std::fs::read(dir.join("Fonts").join(file)).ok())
+}
+
 pub fn install(ctx: &egui::Context) {
+    egui_extras::install_image_loaders(ctx);
+    let mut fonts = egui::FontDefinitions::default();
+    let mut proportional = fonts
+        .families
+        .get(&FontFamily::Proportional)
+        .cloned()
+        .unwrap_or_default();
     // The UI font lacks arrows and some symbols; the monospace font (Hack)
     // has them, before the emoji fonts.
-    let mut fonts = egui::FontDefinitions::default();
-    if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
-        family.insert(1.min(family.len()), "Hack".to_owned());
+    proportional.insert(1.min(proportional.len()), "Hack".to_owned());
+    // Windows' own font first: the app looks like it belongs there.
+    if let Some(bytes) = windows_font("segoeui.ttf") {
+        fonts
+            .font_data
+            .insert("segoe".into(), egui::FontData::from_owned(bytes).into());
+        proportional.insert(0, "segoe".into());
     }
+    let mut strong = proportional.clone();
+    if let Some(bytes) = windows_font("seguisb.ttf") {
+        fonts.font_data.insert(
+            "segoe-semibold".into(),
+            egui::FontData::from_owned(bytes).into(),
+        );
+        strong.insert(0, "segoe-semibold".into());
+    }
+    fonts
+        .families
+        .insert(FontFamily::Proportional, proportional);
+    fonts.families.insert(semibold(), strong);
     ctx.set_fonts(fonts);
     ctx.style_mut_of(Theme::Dark, |s| style(s, &DARK));
     ctx.style_mut_of(Theme::Light, |s| style(s, &LIGHT));
@@ -84,18 +129,18 @@ pub fn install(ctx: &egui::Context) {
 
 fn style(style: &mut Style, p: &Palette) {
     for (text_style, font) in [
-        (TextStyle::Small, FontId::proportional(11.0)),
+        (TextStyle::Small, FontId::proportional(12.0)),
         (TextStyle::Body, FontId::proportional(14.0)),
         (TextStyle::Button, FontId::proportional(14.0)),
-        (TextStyle::Heading, FontId::proportional(20.0)),
+        (TextStyle::Heading, FontId::new(22.0, semibold())),
         (TextStyle::Monospace, FontId::monospace(13.0)),
     ] {
         style.text_styles.insert(text_style, font);
     }
     let spacing = &mut style.spacing;
     spacing.item_spacing = Vec2::new(8.0, 6.0);
-    spacing.button_padding = Vec2::new(10.0, 4.0);
-    spacing.interact_size = Vec2::new(36.0, 24.0);
+    spacing.button_padding = Vec2::new(10.0, 5.0);
+    spacing.interact_size = Vec2::new(36.0, 26.0);
     spacing.window_margin = Margin::same(16);
     spacing.menu_margin = Margin::same(6);
     spacing.scroll = egui::style::ScrollStyle {
@@ -186,4 +231,29 @@ pub fn banner(style: &Style, color: Color32) -> Frame {
         .stroke(Stroke::new(1.0, color))
         .corner_radius(CornerRadius::same(6))
         .inner_margin(Margin::symmetric(12, 8))
+}
+
+/// A color that fills softly: the background of a badge or a selected row.
+pub fn soft(color: Color32, visuals: &egui::Visuals) -> Color32 {
+    let alpha = if visuals.dark_mode { 0.22 } else { 0.14 };
+    color.gamma_multiply(alpha)
+}
+
+/// The background of lists and tables.
+pub fn surface(visuals: &egui::Visuals) -> Color32 {
+    palette(visuals).surface
+}
+
+pub fn hover(visuals: &egui::Visuals) -> Color32 {
+    palette(visuals).hover
+}
+
+/// A frame for a list or a table.
+pub fn well(style: &Style) -> Frame {
+    let p = palette(&style.visuals);
+    Frame::new()
+        .fill(p.surface)
+        .stroke(Stroke::new(1.0, p.border))
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::same(6))
 }

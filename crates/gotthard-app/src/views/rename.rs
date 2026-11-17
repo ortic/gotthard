@@ -7,7 +7,9 @@ use egui::{RichText, Ui};
 use egui_extras::{Column, TableBuilder};
 use gotthard_core::rename::{self, Case, Journal, Place, Preview, Rule};
 
-use crate::app::{App, empty_hint};
+use crate::app::App;
+use crate::icons::Icon;
+use crate::theme::bold;
 use crate::{theme, widgets};
 
 #[derive(Default)]
@@ -193,8 +195,9 @@ fn rule_ui(ui: &mut Ui, id: usize, rule: &mut Rule) {
 
 impl App {
     pub fn rename_ui(&mut self, ui: &mut Ui) {
-        widgets::heading(
+        widgets::page(
             ui,
+            Icon::Rename,
             "Rename",
             "Rename many files in one go. The steps apply from top to bottom; the list shows \
              every new name first.",
@@ -212,8 +215,8 @@ impl App {
         theme::card(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                ui.strong("Files");
-                if ui.button("Add files…").clicked() {
+                ui.label(bold("Files"));
+                if widgets::button(ui, true, Icon::Plus, "Add files…").clicked() {
                     let start = self
                         .rename
                         .files
@@ -228,7 +231,7 @@ impl App {
                     }
                     self.rename.dirty = true;
                 }
-                if ui.button("Add a folder's files…").clicked()
+                if widgets::button(ui, true, Icon::Folder, "Add a folder's files…").clicked()
                     && let Some(folder) = widgets::pick_folder(std::path::Path::new(""))
                     && let Ok(reader) = std::fs::read_dir(folder)
                 {
@@ -251,28 +254,32 @@ impl App {
                         .sort_by_key(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok());
                     self.rename.dirty = true;
                 }
-                if ui.button("Clear").clicked() {
+                if widgets::button(ui, true, Icon::Close, "Clear").clicked() {
                     self.rename.files.clear();
                     self.rename.dirty = true;
                 }
             });
             ui.add_space(6.0);
-            ui.strong("Steps");
+            ui.label(bold("Steps"));
             let (mut remove, mut up) = (None, None);
             let count = self.rename.rules.len();
             for (index, rule) in self.rename.rules.iter_mut().enumerate() {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        RichText::new(format!("{}. {}", index + 1, rule_title(rule))).strong(),
-                    );
+                    ui.label(bold(format!("{}. {}", index + 1, rule_title(rule))));
                     rule_ui(ui, index, rule);
-                    if index > 0 && ui.small_button("Up").clicked() {
+                    if index > 0
+                        && widgets::icon_button(ui, true, Icon::ArrowUp, "Move this step up")
+                            .clicked()
+                    {
                         up = Some(index);
                     }
-                    if index + 1 < count && ui.small_button("Down").clicked() {
+                    if index + 1 < count
+                        && widgets::icon_button(ui, true, Icon::ChevronDown, "Move this step down")
+                            .clicked()
+                    {
                         up = Some(index + 1);
                     }
-                    if ui.small_button("Remove").clicked() {
+                    if widgets::icon_button(ui, true, Icon::Close, "Remove this step").clicked() {
                         remove = Some(index);
                     }
                 });
@@ -283,7 +290,7 @@ impl App {
             if let Some(index) = remove {
                 self.rename.rules.remove(index);
             }
-            ui.menu_button("Add a step…", |ui| {
+            ui.menu_button("+  Add a step…", |ui| {
                 for rule in new_rules() {
                     if ui.button(rule_title(&rule)).clicked() {
                         self.rename.rules.push(rule);
@@ -302,6 +309,7 @@ impl App {
             apply = widgets::primary(
                 ui,
                 changes > 0 && problems == 0 && !busy,
+                Icon::Rename,
                 &format!("Rename {}", widgets::count(changes, "file")),
             )
             .clicked();
@@ -312,66 +320,70 @@ impl App {
                 );
             }
             if let Some(len) = journal_len {
-                undo = ui
-                    .add_enabled(!busy, egui::Button::new("Undo the last rename"))
+                undo = widgets::button(ui, !busy, Icon::Undo, "Undo the last rename")
                     .on_hover_text(format!("{len} renames are taken back"))
                     .clicked();
             }
         });
         ui.add_space(4.0);
         if previews.is_empty() {
-            empty_hint(
+            widgets::empty(
                 ui,
+                Icon::Rename,
+                "No files to rename",
                 "Add the files to rename, or send them here from Browse or Similar names.",
             );
         } else {
-            TableBuilder::new(ui)
-                .striped(true)
-                .resizable(true)
-                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                .column(Column::initial(300.0).clip(true))
-                .column(Column::initial(300.0).clip(true))
-                .column(Column::remainder().clip(true))
-                .header(24.0, |mut header| {
-                    for title in ["Name", "New name", "Folder"] {
-                        header.col(|ui| {
-                            ui.strong(title);
-                        });
-                    }
-                })
-                .body(|body| {
-                    body.rows(24.0, previews.len(), |mut row| {
-                        let p = &previews[row.index()];
-                        row.col(|ui| {
-                            ui.add(egui::Label::new(&p.old).truncate());
-                        });
-                        row.col(|ui| match &p.problem {
-                            Some(problem) => {
-                                ui.add(
-                                    egui::Label::new(
-                                        RichText::new(format!("{} — {problem}", p.new))
-                                            .color(theme::DANGER),
-                                    )
-                                    .truncate(),
-                                );
-                            }
-                            None if p.changed() => {
-                                ui.add(egui::Label::new(RichText::new(&p.new).strong()).truncate());
-                            }
-                            None => {
-                                ui.weak("unchanged");
-                            }
-                        });
-                        row.col(|ui| {
-                            let folder = p
-                                .path
-                                .parent()
-                                .map(|f| f.to_string_lossy())
-                                .unwrap_or_default();
-                            ui.add(egui::Label::new(RichText::new(folder).weak()).truncate());
+            theme::well(ui.style()).show(ui, |ui| {
+                TableBuilder::new(ui)
+                    .striped(true)
+                    .auto_shrink(false)
+                    .resizable(true)
+                    .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                    .column(Column::initial(300.0).clip(true))
+                    .column(Column::initial(300.0).clip(true))
+                    .column(Column::remainder().clip(true))
+                    .header(26.0, |mut header| {
+                        for title in ["Name", "New name", "Folder"] {
+                            header.col(|ui| widgets::column_title(ui, title));
+                        }
+                    })
+                    .body(|body| {
+                        body.rows(28.0, previews.len(), |mut row| {
+                            let p = &previews[row.index()];
+                            row.col(|ui| {
+                                widgets::file_label(ui, &p.old, false, RichText::new(&p.old));
+                            });
+                            row.col(|ui| match &p.problem {
+                                Some(problem) => {
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(format!("{} — {problem}", p.new))
+                                                .color(theme::DANGER),
+                                        )
+                                        .truncate(),
+                                    );
+                                }
+                                None if p.changed() => {
+                                    ui.add(
+                                        egui::Label::new(RichText::new(&p.new).strong()).truncate(),
+                                    );
+                                }
+                                None => {
+                                    ui.weak("unchanged");
+                                }
+                            });
+                            row.col(|ui| {
+                                let folder = p
+                                    .path
+                                    .parent()
+                                    .map(|f| f.to_string_lossy())
+                                    .unwrap_or_default();
+                                ui.add(egui::Label::new(RichText::new(folder).weak()).truncate());
+                            });
                         });
                     });
-                });
+            });
         }
 
         if apply {

@@ -11,7 +11,9 @@ use gotthard_core::fsx::{self, format_bytes};
 use gotthard_core::sync::{self, CompareOptions, ConflictPolicy, ExecOptions, Mode, State};
 use gotthard_core::{integrity, is_cancelled, master};
 
-use crate::app::{App, Confirm, empty_hint, status_dot};
+use crate::app::{App, Confirm};
+use crate::icons::Icon;
+use crate::theme::bold;
 use crate::views::plan::{Labels, PlanPanel};
 use crate::{theme, widgets};
 
@@ -22,6 +24,7 @@ const LABELS: Labels = Labels {
     the_device: "this computer",
     what: "Synchronization",
     run: "Synchronize",
+    run_icon: Icon::Sync,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -44,6 +47,8 @@ pub enum MasterStatus {
 #[derive(Default)]
 pub struct SyncView {
     pub selected: usize,
+    /// The pair whose settings are open.
+    editing: Option<String>,
     pub panel: PlanPanel,
     /// Looked up every few seconds: the disk may come and go.
     status: HashMap<String, (Instant, MasterStatus)>,
@@ -109,20 +114,22 @@ impl App {
     }
 
     pub fn sync_ui(&mut self, ui: &mut Ui) {
-        widgets::heading(
+        widgets::page(
             ui,
+            Icon::Sync,
             "Synchronize",
             "Keep folders of this computer in step with the master copy on your external disk.",
         );
         if self.settings.pairs.is_empty() {
-            empty_hint(
+            widgets::empty(
                 ui,
-                "Nothing is synchronized yet. Choose a folder on your external disk as the master \
-                 and the folder of this computer that belongs to it.",
+                Icon::Sync,
+                "Nothing is synchronized yet",
+                "Choose a folder on your external disk as the master, and the folder of this \
+                 computer that belongs to it.",
             );
             ui.vertical_centered(|ui| {
-                ui.add_space(8.0);
-                if widgets::primary(ui, true, "Add a synchronized folder").clicked() {
+                if widgets::primary(ui, true, Icon::Plus, "Add a synchronized folder").clicked() {
                     self.add_pair();
                 }
             });
@@ -131,43 +138,46 @@ impl App {
         self.sync.selected = self.sync.selected.min(self.settings.pairs.len() - 1);
 
         egui::Panel::left("sync-pairs")
-            .default_size(210.0)
-            .size_range(150.0..=320.0)
+            .default_size(230.0)
+            .size_range(180.0..=340.0)
+            .frame(egui::Frame::new().inner_margin(egui::Margin {
+                left: 0,
+                right: 10,
+                top: 0,
+                bottom: 0,
+            }))
             .show(ui, |ui| {
-                ui.add_space(4.0);
+                ui.spacing_mut().item_spacing.y = 4.0;
                 for index in 0..self.settings.pairs.len() {
                     let status = self.status_of(index);
                     let pair = &self.settings.pairs[index];
+                    let color = match status {
+                        MasterStatus::Connected { .. } => theme::SUCCESS,
+                        MasterStatus::Other(_) => theme::DANGER,
+                        MasterStatus::NotMarked => theme::WARN,
+                        _ => ui.visuals().weak_text_color(),
+                    };
                     let name = if pair.name.is_empty() {
                         "(no name)"
                     } else {
                         &pair.name
                     };
-                    let color = match status {
-                        MasterStatus::Connected { .. } => theme::SUCCESS,
-                        MasterStatus::Other(_) => theme::DANGER,
-                        _ => ui.visuals().weak_text_color(),
+                    let about = match &pair.last_sync {
+                        Some(last) => format!("{} · {last}", mode_short(pair.mode)),
+                        None => format!("{} · never run", mode_short(pair.mode)),
                     };
-                    ui.horizontal(|ui| {
-                        let (rect, _) =
-                            ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                        ui.painter().circle_filled(rect.center(), 4.5, color);
-                        let selected = self.sync.selected == index;
-                        if ui.selectable_label(selected, name).clicked() && !selected {
-                            self.sync.selected = index;
-                        }
-                    });
+                    let selected = self.sync.selected == index;
+                    if list_entry(ui, selected, Icon::Drive, color, name, &about).clicked() {
+                        self.sync.selected = index;
+                    }
                 }
-                ui.add_space(8.0);
-                if ui.button("Add…").clicked() {
+                ui.add_space(6.0);
+                if widgets::button(ui, true, Icon::Plus, "Add…").clicked() {
                     self.add_pair();
                 }
             });
 
-        egui::CentralPanel::no_frame().show(ui, |ui| {
-            ui.add_space(4.0);
-            self.pair_ui(ui);
-        });
+        egui::CentralPanel::no_frame().show(ui, |ui| self.pair_ui(ui));
     }
 
     fn add_pair(&mut self) {
@@ -184,139 +194,176 @@ impl App {
         let status = self.status_of(index);
         let before = self.settings.pairs[index].clone();
         let busy = self.busy();
+        let connected = matches!(status, MasterStatus::Connected { .. });
+        let complete = !before.master_path.as_os_str().is_empty()
+            && !before.device_path.as_os_str().is_empty();
+        let editing = !complete || self.sync.editing.as_deref() == Some(&before.id);
         let (mut compare, mut check, mut remove, mut make_master) = (false, false, false, false);
+        let mut toggle = false;
 
         theme::card(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
             let pair = &mut self.settings.pairs[index];
-            egui::Grid::new("pair")
-                .striped(false)
-                .num_columns(2)
-                .spacing([12.0, 8.0])
-                .show(ui, |ui| {
-                    ui.label("Name");
-                    ui.add(egui::TextEdit::singleline(&mut pair.name).desired_width(260.0));
-                    ui.end_row();
+            // Where the files travel: the master, the direction, this computer.
+            let side = (ui.available_width() - 64.0) / 2.0;
+            ui.horizontal_top(|ui| {
+                let (state, color) = match &status {
+                    MasterStatus::NotSet => ("No folder chosen".to_owned(), theme::WARN),
+                    MasterStatus::NotMarked => ("Not marked as a master yet".to_owned(), theme::WARN),
+                    MasterStatus::Connected { name, free, .. } => (
+                        match free {
+                            Some(free) => format!("“{name}” connected · {} free", format_bytes(*free)),
+                            None => format!("“{name}” connected"),
+                        },
+                        theme::SUCCESS,
+                    ),
+                    MasterStatus::Missing => (
+                        "Not connected: plug in the disk".to_owned(),
+                        ui.visuals().weak_text_color(),
+                    ),
+                    MasterStatus::Other(name) => {
+                        (format!("Another master (“{name}”) is here"), theme::DANGER)
+                    }
+                };
+                endpoint(ui, side, Icon::Drive, "MASTER COPY", &pair.master_path, &state, color);
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(40.0, 76.0), egui::Sense::hover());
+                let icon = match pair.mode {
+                    Mode::TwoWay => Icon::ArrowBoth,
+                    Mode::Mirror => Icon::ArrowRight,
+                    Mode::Collect => Icon::ArrowLeft,
+                };
+                icon.image(24.0, theme::ACCENT).paint_at(
+                    ui,
+                    egui::Rect::from_center_size(rect.center(), egui::vec2(24.0, 24.0)),
+                );
+                let (state, color) = if pair.device_path.as_os_str().is_empty() {
+                    ("No folder chosen".to_owned(), theme::WARN)
+                } else if pair.device_path.is_dir() {
+                    (
+                        match &pair.last_sync {
+                            Some(last) => format!("Last synchronized {last}"),
+                            None => "Not synchronized yet".to_owned(),
+                        },
+                        theme::SUCCESS,
+                    )
+                } else {
+                    ("This folder doesn't exist".to_owned(), theme::DANGER)
+                };
+                endpoint(ui, side, Icon::Computer, "THIS COMPUTER", &pair.device_path, &state, color);
+            });
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                compare = widgets::primary(ui, connected && !busy, Icon::Search, "Compare").clicked();
+                check = widgets::button(ui, connected && !busy, Icon::Pulse, "Check the master for damage")
+                    .on_hover_text(
+                        "Reads every file of the master and compares it with what was recorded \
+                         at the last check.",
+                    )
+                    .clicked();
+                if status == MasterStatus::NotMarked {
+                    make_master =
+                        widgets::button(ui, true, Icon::Check, "Make it the master").clicked();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    remove = widgets::button(ui, !busy, Icon::Trash, "Remove…").clicked();
+                    let icon = if editing {
+                        Icon::ChevronDown
+                    } else {
+                        Icon::ChevronRight
+                    };
+                    toggle = widgets::button(ui, complete, icon, "Settings").clicked();
+                });
+            });
 
-                    ui.label("Master folder");
-                    ui.vertical(|ui| {
+            if editing {
+                ui.add_space(4.0);
+                ui.separator();
+                ui.add_space(4.0);
+                egui::Grid::new("pair")
+                    .striped(false)
+                    .num_columns(2)
+                    .spacing([16.0, 8.0])
+                    .show(ui, |ui| {
+                        ui.label("Name");
+                        ui.add(egui::TextEdit::singleline(&mut pair.name).desired_width(280.0));
+                        ui.end_row();
+
+                        ui.label("Master folder");
                         if widgets::folder_field(ui, &mut pair.master_path, r"E:\Master\Photos") {
                             // Another folder: its own marker counts.
                             pair.master_id.clear();
                         }
-                        match &status {
-                            MasterStatus::NotSet => {
-                                ui.weak("The folder on the external disk that holds the master copy.");
-                            }
-                            MasterStatus::NotMarked => {
-                                ui.horizontal(|ui| {
-                                    status_dot(ui, theme::WARN, "This folder isn't marked as a master yet.");
-                                    make_master = ui.button("Make it the master").clicked();
-                                });
-                            }
-                            MasterStatus::Connected { name, free, .. } => {
-                                let free = free.map_or(String::new(), |f| {
-                                    format!(" · {} free", format_bytes(f))
-                                });
-                                status_dot(
-                                    ui,
-                                    theme::SUCCESS,
-                                    &format!("Master “{name}” is connected{free}"),
-                                );
-                            }
-                            MasterStatus::Missing => status_dot(
-                                ui,
-                                ui.visuals().weak_text_color(),
-                                "Not connected. Plug in the disk with the master copy.",
-                            ),
-                            MasterStatus::Other(name) => status_dot(
-                                ui,
-                                theme::DANGER,
-                                &format!("This is another master (“{name}”), not the one of this pair."),
-                            ),
-                        }
-                    });
-                    ui.end_row();
-
-                    ui.label("This computer");
-                    widgets::folder_field(ui, &mut pair.device_path, r"C:\Users\me\Pictures");
-                    ui.end_row();
-
-                    ui.label("Direction");
-                    ui.vertical(|ui| {
-                        egui::ComboBox::from_id_salt("mode")
-                            .width(260.0)
-                            .selected_text(mode_title(pair.mode))
-                            .show_ui(ui, |ui| {
-                                for mode in [Mode::TwoWay, Mode::Mirror, Mode::Collect] {
-                                    ui.selectable_value(&mut pair.mode, mode, mode_title(mode));
-                                }
-                            });
-                        ui.weak(match pair.mode {
-                            Mode::TwoWay => {
-                                "Changes and deletions of either side go to the other."
-                            }
-                            Mode::Mirror => {
-                                "This computer's folder becomes an exact copy of the master; what it \
-                                 has beyond the master is removed."
-                            }
-                            Mode::Collect => {
-                                "New and newer files of this computer go to the master. Nothing is \
-                                 deleted, nothing newer is replaced."
-                            }
-                        });
-                    });
-                    ui.end_row();
-
-                    if pair.mode == Mode::TwoWay {
-                        ui.label("Changed on both sides");
-                        egui::ComboBox::from_id_salt("conflicts")
-                            .width(260.0)
-                            .selected_text(conflict_title(pair.conflicts))
-                            .show_ui(ui, |ui| {
-                                for policy in [
-                                    ConflictPolicy::Ask,
-                                    ConflictPolicy::MasterWins,
-                                    ConflictPolicy::NewerWins,
-                                ] {
-                                    ui.selectable_value(
-                                        &mut pair.conflicts,
-                                        policy,
-                                        conflict_title(policy),
-                                    );
-                                }
-                            });
                         ui.end_row();
-                    }
 
-                    ui.label("");
-                    ui.checkbox(
-                        &mut pair.by_content,
-                        "Compare the content of files whose times differ (slower, fewer false differences)",
-                    );
-                    ui.end_row();
-                });
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                let connected = matches!(status, MasterStatus::Connected { .. });
-                compare = widgets::primary(ui, connected && !busy, "Compare").clicked();
-                check = ui
-                    .add_enabled(connected && !busy, egui::Button::new("Check the master for damage"))
-                    .on_hover_text(
-                        "Reads every file of the master and compares it with what was recorded at \
-                         the last check.",
-                    )
-                    .clicked();
-                if let Some(last) = &pair.last_sync {
-                    ui.weak(format!("Last synchronized {last}"));
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    remove = ui.add_enabled(!busy, egui::Button::new("Remove…")).clicked();
-                });
-            });
+                        ui.label("This computer");
+                        widgets::folder_field(ui, &mut pair.device_path, r"C:\Users\me\Pictures");
+                        ui.end_row();
+
+                        ui.label("Direction");
+                        ui.vertical(|ui| {
+                            egui::ComboBox::from_id_salt("mode")
+                                .width(280.0)
+                                .selected_text(mode_title(pair.mode))
+                                .show_ui(ui, |ui| {
+                                    for mode in [Mode::TwoWay, Mode::Mirror, Mode::Collect] {
+                                        ui.selectable_value(&mut pair.mode, mode, mode_title(mode));
+                                    }
+                                });
+                            ui.weak(match pair.mode {
+                                Mode::TwoWay => {
+                                    "Changes and deletions of either side go to the other."
+                                }
+                                Mode::Mirror => {
+                                    "This computer's folder becomes an exact copy of the master; \
+                                     what it has beyond the master is removed."
+                                }
+                                Mode::Collect => {
+                                    "New and newer files of this computer go to the master. \
+                                     Nothing is deleted, nothing newer is replaced."
+                                }
+                            });
+                        });
+                        ui.end_row();
+
+                        if pair.mode == Mode::TwoWay {
+                            ui.label("Changed on both sides");
+                            egui::ComboBox::from_id_salt("conflicts")
+                                .width(280.0)
+                                .selected_text(conflict_title(pair.conflicts))
+                                .show_ui(ui, |ui| {
+                                    for policy in [
+                                        ConflictPolicy::Ask,
+                                        ConflictPolicy::MasterWins,
+                                        ConflictPolicy::NewerWins,
+                                    ] {
+                                        ui.selectable_value(
+                                            &mut pair.conflicts,
+                                            policy,
+                                            conflict_title(policy),
+                                        );
+                                    }
+                                });
+                            ui.end_row();
+                        }
+
+                        ui.label("");
+                        ui.checkbox(
+                            &mut pair.by_content,
+                            "Compare the content of files whose times differ (slower, fewer false differences)",
+                        );
+                        ui.end_row();
+                    });
+            }
         });
-        ui.add_space(8.0);
+        ui.add_space(10.0);
 
+        if toggle {
+            self.sync.editing = if editing {
+                None
+            } else {
+                Some(before.id.clone())
+            };
+        }
         if self.settings.pairs[index] != before {
             let pair = &self.settings.pairs[index];
             if pair.master_path != before.master_path
@@ -327,6 +374,10 @@ impl App {
             {
                 self.sync.panel.clear();
                 self.sync.status.remove(&pair.id);
+            }
+            // The settings stay open while they're being filled in.
+            if !complete {
+                self.sync.editing = Some(before.id.clone());
             }
             self.save_settings();
         }
@@ -383,10 +434,14 @@ impl App {
         } else if self.sync.panel.plan.is_none()
             && self.sync.panel.report.is_none()
             && self.sync.panel.integrity.is_none()
+            && !editing
         {
-            empty_hint(
+            widgets::empty(
                 ui,
-                "Compare shows what a synchronization would do. Nothing changes before you start it.",
+                Icon::Search,
+                "Compare first",
+                "Compare shows what a synchronization would copy and delete. Nothing changes \
+                 before you start it.",
             );
         }
     }
@@ -502,4 +557,113 @@ fn conflict_title(policy: ConflictPolicy) -> &'static str {
         ConflictPolicy::MasterWins => "The master's version wins",
         ConflictPolicy::NewerWins => "The newer version wins",
     }
+}
+
+fn mode_short(mode: Mode) -> &'static str {
+    match mode {
+        Mode::TwoWay => "Both ways",
+        Mode::Mirror => "Mirror",
+        Mode::Collect => "Collect",
+    }
+}
+
+/// One end of a pair: its icon, what it is, where it is and how it's doing.
+pub fn endpoint(
+    ui: &mut Ui,
+    width: f32,
+    icon: Icon,
+    caption: &str,
+    path: &Path,
+    state: &str,
+    color: egui::Color32,
+) {
+    egui::Frame::new()
+        .fill(theme::surface(ui.visuals()))
+        .stroke(egui::Stroke::new(1.0, theme::border(ui.visuals())))
+        .corner_radius(8)
+        .inner_margin(egui::Margin::symmetric(12, 9))
+        .show(ui, |ui| {
+            ui.set_width(width - 26.0);
+            ui.horizontal(|ui| {
+                ui.add(icon.image(28.0, theme::ACCENT));
+                ui.add_space(4.0);
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    ui.label(egui::RichText::new(caption).size(11.0).weak());
+                    let text = if path.as_os_str().is_empty() {
+                        "—".to_owned()
+                    } else {
+                        path.to_string_lossy().into_owned()
+                    };
+                    ui.add(egui::Label::new(bold(text)).truncate());
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 5.0;
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(8.0, 14.0), egui::Sense::hover());
+                        ui.painter().circle_filled(rect.center(), 4.0, color);
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(state).size(13.0).weak())
+                                .truncate(),
+                        );
+                    });
+                });
+            });
+        });
+}
+
+/// An entry of a list at the left of a view: an icon, a name and a line
+/// below it.
+pub fn list_entry(
+    ui: &mut Ui,
+    selected: bool,
+    icon: Icon,
+    color: egui::Color32,
+    name: &str,
+    about: &str,
+) -> egui::Response {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 50.0), egui::Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, name)
+    });
+    let visuals = ui.visuals();
+    if selected {
+        ui.painter()
+            .rect_filled(rect, 8.0, theme::soft(theme::ACCENT, visuals));
+    } else if response.hovered() {
+        ui.painter().rect_filled(rect, 8.0, theme::hover(visuals));
+    }
+    let at = rect.left_center() + egui::vec2(22.0, 0.0);
+    icon.image(
+        20.0,
+        if selected {
+            theme::ACCENT
+        } else {
+            visuals.text_color()
+        },
+    )
+    .paint_at(ui, egui::Rect::from_center_size(at, egui::vec2(20.0, 20.0)));
+    // The state, as a dot at the icon's corner.
+    ui.painter()
+        .circle_filled(at + egui::vec2(9.0, 8.0), 5.0, theme::base(visuals));
+    ui.painter()
+        .circle_filled(at + egui::vec2(9.0, 8.0), 3.5, color);
+    let clip = ui
+        .painter()
+        .with_clip_rect(rect.shrink2(egui::vec2(6.0, 0.0)));
+    clip.text(
+        rect.left_center() + egui::vec2(44.0, -9.0),
+        egui::Align2::LEFT_CENTER,
+        name,
+        egui::FontId::new(14.5, theme::semibold()),
+        visuals.text_color(),
+    );
+    clip.text(
+        rect.left_center() + egui::vec2(44.0, 10.0),
+        egui::Align2::LEFT_CENTER,
+        about,
+        egui::FontId::proportional(12.0),
+        visuals.weak_text_color(),
+    );
+    response
 }

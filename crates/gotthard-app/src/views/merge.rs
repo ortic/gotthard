@@ -8,7 +8,9 @@ use gotthard_core::fsx::format_bytes;
 use gotthard_core::merge::{self, MergeAction, MergeOptions, MergePlan, OnConflict};
 use gotthard_core::{Report, is_cancelled};
 
-use crate::app::{App, empty_hint};
+use crate::app::App;
+use crate::icons::Icon;
+use crate::theme::bold;
 use crate::{theme, widgets};
 
 #[derive(Default)]
@@ -43,8 +45,9 @@ impl App {
     }
 
     pub fn merge_ui(&mut self, ui: &mut Ui) {
-        widgets::heading(
+        widgets::page(
             ui,
+            Icon::Merge,
             "Merge folders",
             "Bring the files of several folder trees together in one. Files with the same content \
              are taken once.",
@@ -54,10 +57,10 @@ impl App {
         let mut compare = false;
         theme::card(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.strong("Folders to merge");
+            ui.label(bold("Folders to merge"));
             changed |= widgets::folder_list(ui, &mut self.merge.sources, "Add a folder…");
             ui.add_space(6.0);
-            ui.strong("Into");
+            ui.label(bold("Into"));
             changed |= widgets::folder_field(ui, &mut self.merge.target, "The folder that gets everything");
             ui.add_space(6.0);
             ui.horizontal(|ui| {
@@ -97,7 +100,7 @@ impl App {
             ui.add_space(6.0);
             let ready = !widgets::set_folders(&self.merge.sources).is_empty()
                 && !self.merge.target.as_os_str().is_empty();
-            compare = widgets::primary(ui, ready && !busy, "Compare").clicked();
+            compare = widgets::primary(ui, ready && !busy, Icon::Search, "Compare").clicked();
         });
         if changed {
             self.merge.plan = None;
@@ -124,17 +127,17 @@ impl App {
         }
         let Some(plan) = &self.merge.plan else {
             if self.merge.report.is_none() {
-                empty_hint(
+                widgets::empty(
                     ui,
+                    Icon::Merge,
+                    "Compare first",
                     "Compare shows where every file would go. Nothing changes before you start the merge.",
                 );
             }
             return;
         };
         for warning in &plan.warnings {
-            theme::banner(ui.style(), theme::WARN).show(ui, |ui| {
-                ui.label(warning);
-            });
+            widgets::notice(ui, Icon::Alert, theme::WARN, warning);
         }
         let (files, bytes) = plan.to_copy();
         let identical = plan.count(&MergeAction::Identical);
@@ -155,15 +158,40 @@ impl App {
             } else {
                 "Nothing to do".to_owned()
             };
-            run = widgets::primary(ui, work && !busy, &text).clicked();
-            ui.label(format!("New: {}", plan.count(&MergeAction::Copy)));
-            ui.label(format!("Kept both: {}", plan.count(&MergeAction::KeepBoth)));
-            ui.label(format!("Replacing: {}", plan.count(&MergeAction::Replace)));
-            ui.label(format!(
-                "Staying in their folder: {}",
-                plan.count(&MergeAction::KeepTarget)
-            ));
-            ui.weak(format!("Already there: {identical}"));
+            run = widgets::primary(ui, work && !busy, Icon::Merge, &text).clicked();
+            ui.add_space(6.0);
+            let weak = ui.visuals().text_color().gamma_multiply(0.7);
+            for (icon, text, n, color) in [
+                (
+                    Icon::Plus,
+                    "New",
+                    plan.count(&MergeAction::Copy),
+                    theme::ACCENT,
+                ),
+                (
+                    Icon::Copy,
+                    "Kept both",
+                    plan.count(&MergeAction::KeepBoth),
+                    theme::WARN,
+                ),
+                (
+                    Icon::Refresh,
+                    "Replacing",
+                    plan.count(&MergeAction::Replace),
+                    theme::DANGER,
+                ),
+                (
+                    Icon::Close,
+                    "Staying",
+                    plan.count(&MergeAction::KeepTarget),
+                    theme::WARN,
+                ),
+                (Icon::Equal, "Already there", identical, weak),
+            ] {
+                if n > 0 || icon == Icon::Plus {
+                    widgets::badge(ui, Some(icon), &format!("{text}: {n}"), color);
+                }
+            }
             ui.checkbox(&mut self.merge.show_identical, "Show files already there");
         });
         ui.add_space(4.0);
@@ -174,61 +202,66 @@ impl App {
             .filter(|(_, i)| self.merge.show_identical || i.action != MergeAction::Identical)
             .map(|(i, _)| i)
             .collect();
-        TableBuilder::new(ui)
-            .striped(true)
-            .resizable(true)
-            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-            .column(Column::initial(160.0).clip(true))
-            .column(Column::remainder().at_least(160.0).clip(true))
-            .column(Column::initial(90.0))
-            .column(Column::initial(260.0).clip(true))
-            .header(24.0, |mut header| {
-                for title in ["From", "File", "Size", "What happens"] {
-                    header.col(|ui| {
-                        ui.strong(title);
-                    });
-                }
-            })
-            .body(|body| {
-                body.rows(24.0, visible.len(), |mut row| {
-                    let item = &plan.items[visible[row.index()]];
-                    row.col(|ui| {
-                        let source = &plan.sources[item.source];
-                        let name = source
-                            .file_name()
-                            .map_or(source.to_string_lossy(), |n| n.to_string_lossy());
-                        ui.add(egui::Label::new(RichText::new(name).weak()).truncate())
-                            .on_hover_text(source.to_string_lossy());
-                    });
-                    row.col(|ui| {
-                        ui.add(egui::Label::new(&item.rel).truncate());
-                    });
-                    row.col(|ui| {
-                        ui.label(format_bytes(item.stamp.size));
-                    });
-                    row.col(|ui| {
-                        let (text, color) = match &item.action {
-                            MergeAction::Copy => ("goes to the target".to_owned(), theme::ACCENT),
-                            MergeAction::Identical => (
-                                "is there already".to_owned(),
-                                ui.visuals().weak_text_color(),
-                            ),
-                            MergeAction::KeepBoth => {
-                                let name = item.target_rel.rsplit('/').next().unwrap_or_default();
-                                (format!("kept beside it as {name}"), theme::WARN)
-                            }
-                            MergeAction::Replace => {
-                                ("replaces the target's version".to_owned(), theme::DANGER)
-                            }
-                            MergeAction::KeepTarget => (
-                                "stays: the target's version is kept".to_owned(),
-                                theme::WARN,
-                            ),
-                        };
-                        ui.add(egui::Label::new(RichText::new(text).color(color)).truncate());
+        theme::well(ui.style()).show(ui, |ui| {
+            TableBuilder::new(ui)
+                .striped(true)
+                .auto_shrink(false)
+                .resizable(true)
+                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                .column(Column::initial(160.0).clip(true))
+                .column(Column::remainder().at_least(160.0).clip(true))
+                .column(Column::initial(90.0))
+                .column(Column::initial(260.0).clip(true))
+                .header(26.0, |mut header| {
+                    for title in ["From", "File", "Size", "What happens"] {
+                        header.col(|ui| widgets::column_title(ui, title));
+                    }
+                })
+                .body(|body| {
+                    body.rows(28.0, visible.len(), |mut row| {
+                        let item = &plan.items[visible[row.index()]];
+                        row.col(|ui| {
+                            let source = &plan.sources[item.source];
+                            let name = source
+                                .file_name()
+                                .map_or(source.to_string_lossy(), |n| n.to_string_lossy());
+                            ui.add(egui::Label::new(RichText::new(name).weak()).truncate())
+                                .on_hover_text(source.to_string_lossy());
+                        });
+                        row.col(|ui| {
+                            let name = item.rel.rsplit('/').next().unwrap_or(&item.rel);
+                            widgets::file_label(ui, name, false, RichText::new(&item.rel));
+                        });
+                        row.col(|ui| {
+                            ui.label(format_bytes(item.stamp.size));
+                        });
+                        row.col(|ui| {
+                            let (text, color) = match &item.action {
+                                MergeAction::Copy => {
+                                    ("goes to the target".to_owned(), theme::ACCENT)
+                                }
+                                MergeAction::Identical => (
+                                    "is there already".to_owned(),
+                                    ui.visuals().weak_text_color(),
+                                ),
+                                MergeAction::KeepBoth => {
+                                    let name =
+                                        item.target_rel.rsplit('/').next().unwrap_or_default();
+                                    (format!("kept beside it as {name}"), theme::WARN)
+                                }
+                                MergeAction::Replace => {
+                                    ("replaces the target's version".to_owned(), theme::DANGER)
+                                }
+                                MergeAction::KeepTarget => (
+                                    "stays: the target's version is kept".to_owned(),
+                                    theme::WARN,
+                                ),
+                            };
+                            ui.add(egui::Label::new(RichText::new(text).color(color)).truncate());
+                        });
                     });
                 });
-            });
+        });
         if run {
             let plan = self.merge.plan.take().expect("shown above");
             let options = self.merge_options();
